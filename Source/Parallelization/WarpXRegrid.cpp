@@ -5,6 +5,81 @@
 using namespace amrex;
 
 void
+WarpX::LoadBalancePre (int step)
+{
+#ifdef WARPX_USE_PSATD
+    amrex::Abort("LoadBalance for PSATD: TODO");
+#endif
+
+    if (step > 0 && (step+1) % load_balance_int == 0)
+    {
+        LoadBalance();
+        // Reset the costs to 0
+        for (int lev = 0; lev <= finest_level; ++lev) {
+            total_costs[lev]->setVal(0.0);
+        }
+    }
+    else
+    {
+        for (int lev = 0; lev <= finest_level; ++lev) {
+            // Perform running average of the costs
+            // (Giving more importance to most recent costs)
+            (*total_costs[lev].get()).mult( (1. - 2./load_balance_int) );
+        }
+    }
+    for (int lev = 0; lev <= finest_level; ++lev) {
+        costs[lev]->setVal(0.0);
+    }
+}
+
+void
+WarpX::LoadBalancePost (Real dt_wall)
+{
+    Real cost_local = 0.0;
+    for (int lev = 0; lev <= finest_level; ++lev) {
+        cost_local += costs[lev]->sum(0, true);
+    }
+    Real cost_base = dt_wall - cost_local;
+    ParallelDescriptor::ReduceRealMax(cost_base);
+
+    if (Verbose() > 1) {
+        Real frac_min = cost_local / dt_wall;
+        Real frac_max = frac_min;
+        ParallelDescriptor::ReduceRealMin(frac_min);
+        ParallelDescriptor::ReduceRealMax(frac_max);
+        amrex::Print() << "Fraction in Costs: " << frac_min << ", " << frac_max << std::endl;
+    }
+
+    static long ncells_total = 0;
+    static bool first = true;
+    if (first) {
+        first = false;
+        for (int lev = 0; lev <= finest_level; ++lev) {
+            ncells_total += CountCells(lev);
+        }
+    }
+    Real ninv = static_cast<Real>(ParallelDescriptor::NProcs()) / static_cast<Real>(ncells_total);
+    cost_base *= ninv;
+
+    for (int lev = 0; lev <= finest_level; ++lev) {
+#ifdef _OPENMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+        for (MFIter mfi(*total_costs[lev],TilingIfNotGPU()); mfi.isValid(); ++mfi)
+        {
+            const Box& bx = mfi.tilebox();
+            Array4<Real      > ctot = (*total_costs[lev]).array(mfi);
+            Array4<Real const> cstp = (*      costs[lev]).array(mfi);
+            amrex::ParallelFor(bx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                ctot(i,j,k) += cstp(i,j,k) + cost_base;
+            });
+        }
+    }
+}
+
+void
 WarpX::LoadBalance ()
 {
     BL_PROFILE_REGION("LoadBalance");
@@ -14,12 +89,12 @@ WarpX::LoadBalance ()
 
     for (int lev = 0; lev <= finestLevel(); ++lev)
     {
-        const Real nboxes = costs[lev]->size();
+        const Real nboxes = total_costs[lev]->size();
         const Real nprocs = ParallelDescriptor::NProcs();
         const int nmax = static_cast<int>(std::ceil(nboxes/nprocs*load_balance_knapsack_factor));
         const DistributionMapping newdm = (load_balance_with_sfc)
-	  ? DistributionMapping::makeSFC(*costs[lev], false)
-            : DistributionMapping::makeKnapSack(*costs[lev], nmax);
+	  ? DistributionMapping::makeSFC(*total_costs[lev], false)
+            : DistributionMapping::makeKnapSack(*total_costs[lev], nmax);
         RemakeLevel(lev, t_new[lev], boxArray(lev), newdm);
     }
 
@@ -222,13 +297,16 @@ WarpX::RemakeLevel (int lev, Real time, const BoxArray& ba, const DistributionMa
 
         if (costs[lev] != nullptr) {
             costs[lev].reset(new MultiFab(costs[lev]->boxArray(), dm, 1, 0));
+            total_costs[lev].reset(new MultiFab(costs[lev]->boxArray(), dm, 1, 0));
             costs[lev]->setVal(0.0);
+            total_costs[lev]->setVal(0.0);
         }
 
         SetDistributionMap(lev, dm);
     }
     else
     {
+        // If this changes, we need to make sure LoadBalancePost is updated too.
         amrex::Abort("RemakeLevel: to be implemented");
     }
 }

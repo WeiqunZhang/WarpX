@@ -314,6 +314,7 @@ WarpX::InitLevelData (int lev, Real time)
 
     if (costs[lev]) {
         costs[lev]->setVal(0.0);
+        total_costs[lev]->setVal(0.0);
     }
 }
 

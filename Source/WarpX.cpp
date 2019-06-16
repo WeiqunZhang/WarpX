@@ -198,6 +198,7 @@ WarpX::WarpX ()
 #endif // WARPX_DO_ELECTROSTATIC
 
     costs.resize(nlevs_max);
+    total_costs.resize(nlevs_max);
 
 #ifdef WARPX_USE_PSATD
     Efield_fp_fft.resize(nlevs_max);
@@ -599,6 +600,7 @@ WarpX::ClearLevel (int lev)
     rho_cp[lev].reset();
 
     costs[lev].reset();
+    total_costs[lev].reset();
 
 #ifdef WARPX_USE_PSATD
     for (int i = 0; i < 3; ++i) {
@@ -849,6 +851,7 @@ WarpX::AllocLevelMFs (int lev, const BoxArray& ba, const DistributionMapping& dm
 
     if (load_balance_int > 0) {
         costs[lev].reset(new MultiFab(ba, dm, 1, 0));
+        total_costs[lev].reset(new MultiFab(ba, dm, 1, 0));
     }
 }
 

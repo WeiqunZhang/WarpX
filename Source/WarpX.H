@@ -411,6 +411,8 @@ private:
     void ExchangeWithPmlF (int lev);
 
     void LoadBalance ();
+    void LoadBalancePre (int step);
+    void LoadBalancePost (amrex::Real dt_wall);
 
     void BuildBufferMasks ();
     const amrex::iMultiFab* getCurrentBufferMasks (int lev) const {
@@ -502,6 +504,7 @@ private:
 
     int load_balance_int = -1;
     amrex::Vector<std::unique_ptr<amrex::MultiFab> > costs;
+    amrex::Vector<std::unique_ptr<amrex::MultiFab> > total_costs;
     int load_balance_with_sfc = 0;
     amrex::Real load_balance_knapsack_factor = 1.24;
 

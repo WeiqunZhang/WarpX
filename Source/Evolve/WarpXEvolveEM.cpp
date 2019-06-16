@@ -50,24 +50,7 @@ WarpX::EvolveEM (int numsteps)
 
         if (costs[0] != nullptr)
         {
-#ifdef WARPX_USE_PSATD
-            amrex::Abort("LoadBalance for PSATD: TODO");
-#endif
-
-            if (step > 0 && (step+1) % load_balance_int == 0)
-            {
-                LoadBalance();
-                // Reset the costs to 0
-                for (int lev = 0; lev <= finest_level; ++lev) {
-                    costs[lev]->setVal(0.0);
-                }
-            }
-
-            for (int lev = 0; lev <= finest_level; ++lev) {
-                // Perform running average of the costs
-                // (Giving more importance to most recent costs)
-                (*costs[lev].get()).mult( (1. - 2./load_balance_int) );
-            }
+            LoadBalancePre(step);
         }
 
         // At the beginning, we have B^{n} and E^{n}.
@@ -160,10 +143,16 @@ WarpX::EvolveEM (int numsteps)
         amrex::Print()<< "STEP " << step+1 << " ends." << " TIME = " << cur_time
                       << " DT = " << dt[0] << "\n";
         Real walltime_end_step = amrex::second();
+        Real walltime_this_step = walltime_end_step-walltime_beg_step;
         walltime = walltime_end_step - walltime_start;
         amrex::Print()<< "Walltime = " << walltime
-                      << " s; This step = " << walltime_end_step-walltime_beg_step
+                      << " s; This step = " << walltime_this_step
                       << " s; Avg. per step = " << walltime/(step+1) << " s\n";
+
+        if (costs[0] != nullptr)
+        {
+            LoadBalancePost(walltime_this_step);
+        }
 
         // sync up time
         for (int i = 0; i <= max_level; ++i) {
@@ -273,6 +262,8 @@ WarpX::EvolveEM (int numsteps)
 void
 WarpX::OneStep_nosub (Real cur_time)
 {
+    BL_PROFILE("WarpX::OneStep_nosub()");
+
     // Push particle from x^{n} to x^{n+1}
     //               from p^{n-1/2} to p^{n+1/2}
     // Deposit current j^{n+1/2}
