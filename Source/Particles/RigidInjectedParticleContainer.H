@@ -50,7 +50,6 @@ public:
                         amrex::Cuda::ManagedDeviceVector<amrex::Real>& xp,
                         amrex::Cuda::ManagedDeviceVector<amrex::Real>& yp,
                         amrex::Cuda::ManagedDeviceVector<amrex::Real>& zp,
-                        amrex::Cuda::ManagedDeviceVector<amrex::Real>& giv,
                         amrex::Real dt) override;
 
     virtual void PushP (int lev, amrex::Real dt,
@@ -64,7 +63,7 @@ public:
     virtual void ReadHeader (std::istream& is) override;
 
     virtual void WriteHeader (std::ostream& os) const override;
-    
+
 private:
 
     // User input quantities
