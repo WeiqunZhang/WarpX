@@ -33,11 +33,11 @@ void PhotonParticleContainer::InitData()
 }
 
 void
-PhotonParticleContainer::PushPX(WarpXParIter& pti,
-                                Cuda::ManagedDeviceVector<Real>& xp,
-                                Cuda::ManagedDeviceVector<Real>& yp,
-                                Cuda::ManagedDeviceVector<Real>& zp,
-                                Real dt)
+PhotonParticleContainer::PushPX (WarpXParIter& pti,
+                                 Cuda::ManagedDeviceVector<Real>& xp,
+                                 Cuda::ManagedDeviceVector<Real>& yp,
+                                 Cuda::ManagedDeviceVector<Real>& zp,
+                                 Real dt)
 {
 
     // This wraps the momentum and position advance so that inheritors can modify the call.
@@ -76,26 +76,28 @@ PhotonParticleContainer::PushPX(WarpXParIter& pti,
 
 void
 PhotonParticleContainer::Evolve (int lev,
-                                        const MultiFab& Ex, const MultiFab& Ey, const MultiFab& Ez,
-                                        const MultiFab& Bx, const MultiFab& By, const MultiFab& Bz,
-                                        MultiFab& jx, MultiFab& jy, MultiFab& jz,
-                                        MultiFab* cjx, MultiFab* cjy, MultiFab* cjz,
-                                        MultiFab* rho, MultiFab* crho,
-                                        const MultiFab* cEx, const MultiFab* cEy, const MultiFab* cEz,
-                                        const MultiFab* cBx, const MultiFab* cBy, const MultiFab* cBz,
-                                        Real t, Real dt)
+                                 const MultiFab& Ex, const MultiFab& Ey, const MultiFab& Ez,
+                                 const MultiFab& Bx, const MultiFab& By, const MultiFab& Bz,
+                                 MultiFab& jx, MultiFab& jy, MultiFab& jz,
+                                 amrex::MultiFab* jxcp, amrex::MultiFab* jycp, amrex::MultiFab* jzcp,
+                                 MultiFab* cjx, MultiFab* cjy, MultiFab* cjz,
+                                 MultiFab* rho, MultiFab* rhocp, MultiFab* crho,
+                                 const MultiFab* cEx, const MultiFab* cEy, const MultiFab* cEz,
+                                 const MultiFab* cBx, const MultiFab* cBy, const MultiFab* cBz,
+                                 Real t, Real dt)
 {
     // This does gather, push and depose.
     // Push and depose have been re-written for photon,
     // so they do not do anything.
-    PhysicalParticleContainer::Evolve (lev,
-                                       Ex, Ey, Ez,
-                                       Bx, By, Bz,
-                                       jx, jy, jz,
-                                       cjx, cjy, cjz,
-                                       rho, crho,
-                                       cEx, cEy, cEz,
-                                       cBx, cBy, cBz,
-                                       t, dt);
+    PhysicalParticleContainer::Evolve(lev,
+                                      Ex, Ey, Ez,
+                                      Bx, By, Bz,
+                                      jx, jy, jz,
+                                      jxcp, jycp, jzcp,
+                                      cjx, cjy, cjz,
+                                      rho, rhocp, crho,
+                                      cEx, cEy, cEz,
+                                      cBx, cBy, cBz,
+                                      t, dt);
 
 }
