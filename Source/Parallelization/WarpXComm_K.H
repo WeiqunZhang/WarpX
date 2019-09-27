@@ -236,9 +236,7 @@ void warpx_interp_nd_bfield_y (int j, int k, int l,
         +      wx *  wy * Byc(jg-1,kg-1,0);
 
     // interp form fine stagger (cell-centered for By) to fine nodal
-    int joff = (j == jg*2) ? -1 : 1;
-    int koff = (k == kg*2) ? -1 : 1;
-    Real bf = 0.25*(Byf(j,k,0) + Byf(j+joff,k,0) + Byf(j,k+koff,0) + Byf(j+joff,k+koff,0));
+    Real bf = 0.25*(Byf(j,k,0) + Byf(j-1,k,0) + Byf(j,k-1,0) + Byf(j-1,k-1,0));
 
 #else
 
@@ -306,11 +304,7 @@ void warpx_interp_nd_bfield_y (int j, int k, int l,
                                amrex::Array4<amrex::Real const> const& Byf)
 {
 #if (AMREX_SPACEDIM == 2)
-    int jg = amrex::coarsen(j,2);
-    int kg = amrex::coarsen(k,2);
-    int joff = (j == jg*2) ? -1 : 1;
-    int koff = (k == kg*2) ? -1 : 1;
-    Bya(j,k,0) = 0.25*(Byf(j,k,0) + Byf(j+joff,k,0) + Byf(j,k+koff,0) + Byf(j+joff,k+koff,0));
+    Bya(j,k,0) = 0.25*(Byf(j,k,0) + Byf(j-1,k,0) + Byf(j,k-1,0) + Byf(j-1,k-1,0));
 #else
 #endif
 }
