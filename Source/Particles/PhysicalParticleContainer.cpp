@@ -1132,15 +1132,24 @@ PhysicalParticleContainer::Evolve (int lev,
 
             if (WarpX::use_fdtd_nci_corr)
             {
-                // Filter arrays Ex[pti], store the result in
-                // filtered_Ex and update pointer exfab so that it
-                // points to filtered_Ex (and do the same for all
-                // components of E and B).
-                applyNCIFilter(lev, pti.tilebox(), exeli, eyeli, ezeli, bxeli, byeli, bzeli,
+                // Filter arrays Ex[pti], store the result in filtered_Ex
+                // (and do the same for all components of E and B).
+                applyNCIFilter(lev, pti.tilebox(),
                                filtered_Ex, filtered_Ey, filtered_Ez,
                                filtered_Bx, filtered_By, filtered_Bz,
-                               Ex[pti], Ey[pti], Ez[pti], Bx[pti], By[pti], Bz[pti],
-                               exfab, eyfab, ezfab, bxfab, byfab, bzfab);
+                               Ex[pti], Ey[pti], Ez[pti], Bx[pti], By[pti], Bz[pti]);
+                exeli = filtered_Ex.elixir();
+                eyeli = filtered_Ey.elixir();
+                ezeli = filtered_Ez.elixir();
+                bxeli = filtered_Bx.elixir();
+                byeli = filtered_By.elixir();
+                bzeli = filtered_Bz.elixir();
+                exfab = &filtered_Ex;
+                eyfab = &filtered_Ey;
+                ezfab = &filtered_Ez;
+                bxfab = &filtered_Bx;
+                byfab = &filtered_By;
+                bzfab = &filtered_Bz;
             }
 
             Exp.assign(np,WarpX::E_external_particle[0]);
@@ -1221,18 +1230,29 @@ PhysicalParticleContainer::Evolve (int lev,
                     FArrayBox const* cbyfab = &(*cBy)[pti];
                     FArrayBox const* cbzfab = &(*cBz)[pti];
 
+                    Elixir cexeli, ceyeli, cezeli, cbxeli, cbyeli, cbzeli;
+
                     if (WarpX::use_fdtd_nci_corr)
                     {
                         // Filter arrays (*cEx)[pti], store the result in
-                        // filtered_Ex and update pointer cexfab so that it
-                        // points to filtered_Ex (and do the same for all
-                        // components of E and B)
-                        applyNCIFilter(lev-1, cbox, exeli, eyeli, ezeli, bxeli, byeli, bzeli,
+                        // filtered_Ex (and do the same for all components of E and B)
+                        applyNCIFilter(lev-1, cbox,
                                        filtered_Ex, filtered_Ey, filtered_Ez,
                                        filtered_Bx, filtered_By, filtered_Bz,
                                        (*cEx)[pti], (*cEy)[pti], (*cEz)[pti],
-                                       (*cBx)[pti], (*cBy)[pti], (*cBz)[pti],
-                                       cexfab, ceyfab, cezfab, cbxfab, cbyfab, cbzfab);
+                                       (*cBx)[pti], (*cBy)[pti], (*cBz)[pti]);
+                        cexeli = filtered_Ex.elixir();
+                        ceyeli = filtered_Ey.elixir();
+                        cezeli = filtered_Ez.elixir();
+                        cbxeli = filtered_Bx.elixir();
+                        cbyeli = filtered_By.elixir();
+                        cbzeli = filtered_Bz.elixir();
+                        cexfab = &filtered_Ex;
+                        ceyfab = &filtered_Ey;
+                        cezfab = &filtered_Ez;
+                        cbxfab = &filtered_Bx;
+                        cbyfab = &filtered_By;
+                        cbzfab = &filtered_Bz;
                     }
 
                     // Field gather for particles in gather buffers
@@ -1337,15 +1357,10 @@ PhysicalParticleContainer::Evolve (int lev,
 void
 PhysicalParticleContainer::applyNCIFilter (
     int lev, const Box& box,
-    Elixir& exeli, Elixir& eyeli, Elixir& ezeli,
-    Elixir& bxeli, Elixir& byeli, Elixir& bzeli,
     FArrayBox& filtered_Ex, FArrayBox& filtered_Ey, FArrayBox& filtered_Ez,
     FArrayBox& filtered_Bx, FArrayBox& filtered_By, FArrayBox& filtered_Bz,
     const FArrayBox& Ex, const FArrayBox& Ey, const FArrayBox& Ez,
-    const FArrayBox& Bx, const FArrayBox& By, const FArrayBox& Bz,
-    FArrayBox const * & ex_ptr, FArrayBox const * & ey_ptr,
-    FArrayBox const * & ez_ptr, FArrayBox const * & bx_ptr,
-    FArrayBox const * & by_ptr, FArrayBox const * & bz_ptr)
+    const FArrayBox& Bx, const FArrayBox& By, const FArrayBox& Bz)
 {
 
     // Get instances of NCI Godfrey filters
@@ -1363,43 +1378,29 @@ PhysicalParticleContainer::applyNCIFilter (
 
     // Filter Ex (Both 2D and 3D)
     filtered_Ex.resize(amrex::convert(tbox,Ex.box().ixType()));
-    // Safeguard for GPU
-    exeli = filtered_Ex.elixir();
     // Apply filter on Ex, result stored in filtered_Ex
-
     nci_godfrey_filter_exeybz[lev]->ApplyStencil(filtered_Ex, Ex, filtered_Ex.box());
-    // Update ex_ptr reference
-    ex_ptr = &filtered_Ex;
 
     // Filter Ez
     filtered_Ez.resize(amrex::convert(tbox,Ez.box().ixType()));
-    ezeli = filtered_Ez.elixir();
     nci_godfrey_filter_bxbyez[lev]->ApplyStencil(filtered_Ez, Ez, filtered_Ez.box());
-    ez_ptr = &filtered_Ez;
 
     // Filter By
     filtered_By.resize(amrex::convert(tbox,By.box().ixType()));
-    byeli = filtered_By.elixir();
     nci_godfrey_filter_bxbyez[lev]->ApplyStencil(filtered_By, By, filtered_By.box());
-    by_ptr = &filtered_By;
+
 #if (AMREX_SPACEDIM == 3)
     // Filter Ey
     filtered_Ey.resize(amrex::convert(tbox,Ey.box().ixType()));
-    eyeli = filtered_Ey.elixir();
     nci_godfrey_filter_exeybz[lev]->ApplyStencil(filtered_Ey, Ey, filtered_Ey.box());
-    ey_ptr = &filtered_Ey;
 
     // Filter Bx
     filtered_Bx.resize(amrex::convert(tbox,Bx.box().ixType()));
-    bxeli = filtered_Bx.elixir();
     nci_godfrey_filter_bxbyez[lev]->ApplyStencil(filtered_Bx, Bx, filtered_Bx.box());
-    bx_ptr = &filtered_Bx;
 
     // Filter Bz
     filtered_Bz.resize(amrex::convert(tbox,Bz.box().ixType()));
-    bzeli = filtered_Bz.elixir();
     nci_godfrey_filter_exeybz[lev]->ApplyStencil(filtered_Bz, Bz, filtered_Bz.box());
-    bz_ptr = &filtered_Bz;
 #endif
 }
 

@@ -174,17 +174,12 @@ public:
  */
     void applyNCIFilter (
         int lev, const amrex::Box& box,
-        amrex::Elixir& exeli, amrex::Elixir& eyeli, amrex::Elixir& ezeli,
-        amrex::Elixir& bxeli, amrex::Elixir& byeli, amrex::Elixir& bzeli,
         amrex::FArrayBox& filtered_Ex, amrex::FArrayBox& filtered_Ey,
         amrex::FArrayBox& filtered_Ez, amrex::FArrayBox& filtered_Bx,
         amrex::FArrayBox& filtered_By, amrex::FArrayBox& filtered_Bz,
         const amrex::FArrayBox& Ex, const amrex::FArrayBox& Ey,
         const amrex::FArrayBox& Ez, const amrex::FArrayBox& Bx,
-        const amrex::FArrayBox& By, const amrex::FArrayBox& Bz,
-        amrex::FArrayBox const * & exfab, amrex::FArrayBox const * & eyfab,
-        amrex::FArrayBox const * & ezfab, amrex::FArrayBox const * & bxfab,
-        amrex::FArrayBox const * & byfab, amrex::FArrayBox const * & bzfab);
+        const amrex::FArrayBox& By, const amrex::FArrayBox& Bz);
 
 #ifdef WARPX_QED
     //Functions decleared in WarpXParticleContainer.H
