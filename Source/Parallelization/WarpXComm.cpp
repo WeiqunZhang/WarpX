@@ -550,6 +550,99 @@ WarpX::SyncCurrent ()
 {
     WARPX_PROFILE("SyncCurrent()");
 
+    int lev = 2;
+    current_cp[lev][0]->setVal(0.0);
+    current_cp[lev][1]->setVal(0.0);
+    current_cp[lev][2]->setVal(0.0);
+
+    const IntVect& refinement_ratio = refRatio(lev-1);
+
+    std::array<const MultiFab*,3> fine { current_fp[lev][0].get(),
+                                         current_fp[lev][1].get(),
+                                         current_fp[lev][2].get() };
+    std::array<      MultiFab*,3> crse { current_cp[lev][0].get(),
+                                         current_cp[lev][1].get(),
+                                         current_cp[lev][2].get() };
+    interpolateCurrentFineToCoarse(fine, crse, refinement_ratio[0]);
+
+    ApplyFilterandSumBoundaryJ(lev, PatchType::fine);
+
+    lev = 1;
+    for (int idim = 0; idim < 3; ++idim) {
+        const auto& period = Geom(lev).periodicity();
+        MultiFab mf(current_fp[lev][idim]->boxArray(),
+                    current_fp[lev][idim]->DistributionMap(),
+                    current_fp[lev][idim]->nComp(), 0);
+        mf.setVal(0.0);
+        mf.ParallelAdd(*current_cp[lev+1][idim], 0, 0, current_cp[lev+1][idim]->nComp(),
+                        current_cp[lev+1][idim]->nGrowVect(), IntVect::TheZeroVector(),
+                        period);
+        WarpXSumGuardCells(*(current_cp[lev+1][idim]), period, 0, current_cp[lev+1][idim]->nComp());
+
+        current_cp[lev][0]->setVal(0.0);
+        current_cp[lev][1]->setVal(0.0);
+        current_cp[lev][2]->setVal(0.0);
+
+        const IntVect& refinement_ratio = refRatio(lev-1);
+
+        std::array<const MultiFab*,3> fine { current_fp[lev][0].get(),
+                                             current_fp[lev][1].get(),
+                                             current_fp[lev][2].get() };
+        std::array<      MultiFab*,3> crse { current_cp[lev][0].get(),
+                                             current_cp[lev][1].get(),
+                                             current_cp[lev][2].get() };
+        interpolateCurrentFineToCoarse(fine, crse, refinement_ratio[0]);
+
+        { // apply fileter and sum J for idim
+            const int glev = lev;
+            const auto& period = Geom(glev).periodicity();
+            auto& j = current_fp[lev];
+            if (use_filter) {
+                IntVect ng = j[idim]->nGrowVect();
+                ng += bilinear_filter.stencil_length_each_dir-1;
+                MultiFab jf(j[idim]->boxArray(), j[idim]->DistributionMap(), j[idim]->nComp(), ng);
+                bilinear_filter.ApplyStencil(jf, *j[idim]);
+                WarpXSumGuardCells(*(j[idim]), jf, period, 0, (j[idim])->nComp());
+            } else {
+                WarpXSumGuardCells(*(j[idim]), period, 0, (j[idim])->nComp());
+            }
+        }
+
+        MultiFab::Add(*current_fp[lev][idim], mf, 0, 0, current_fp[lev+1][idim]->nComp(), 0);
+    }
+
+    lev = 0;
+    for (int idim = 0; idim < 3; ++idim) {
+        const auto& period = Geom(lev).periodicity();
+        MultiFab mf(current_fp[lev][idim]->boxArray(),
+                    current_fp[lev][idim]->DistributionMap(),
+                    current_fp[lev][idim]->nComp(), 0);
+        mf.setVal(0.0);
+        mf.ParallelAdd(*current_cp[lev+1][idim], 0, 0, current_cp[lev+1][idim]->nComp(),
+                        current_cp[lev+1][idim]->nGrowVect(), IntVect::TheZeroVector(),
+                        period);
+        WarpXSumGuardCells(*(current_cp[lev+1][idim]), period, 0, current_cp[lev+1][idim]->nComp());
+
+        { // apply fileter and sum J for idim
+            const int glev = lev;
+            const auto& period = Geom(glev).periodicity();
+            auto& j = current_fp[lev];
+            if (use_filter) {
+                IntVect ng = j[idim]->nGrowVect();
+                ng += bilinear_filter.stencil_length_each_dir-1;
+                MultiFab jf(j[idim]->boxArray(), j[idim]->DistributionMap(), j[idim]->nComp(), ng);
+                bilinear_filter.ApplyStencil(jf, *j[idim]);
+                WarpXSumGuardCells(*(j[idim]), jf, period, 0, (j[idim])->nComp());
+            } else {
+                WarpXSumGuardCells(*(j[idim]), period, 0, (j[idim])->nComp());
+            }
+        }
+
+        MultiFab::Add(*current_fp[lev][idim], mf, 0, 0, current_fp[lev+1][idim]->nComp(), 0);
+    }
+
+
+#if 0
     // Restrict fine patch current onto the coarse patch, before
     // summing the guard cells of the fine patch
     for (int lev = 1; lev <= finest_level; ++lev)
@@ -578,6 +671,7 @@ WarpX::SyncCurrent ()
     for (int lev=0; lev <= finest_level; ++lev) {
         AddCurrentFromFineLevelandSumBoundary(lev);
     }
+#endif
 }
 
 void
@@ -677,6 +771,7 @@ WarpX::AddCurrentFromFineLevelandSumBoundary (int lev)
             mf.setVal(0.0);
             if (use_filter && current_buf[lev+1][idim])
             {
+                amrex::Abort("AAAAA");
                 // coarse patch of fine level
                 IntVect ng = current_cp[lev+1][idim]->nGrowVect();
                 ng += bilinear_filter.stencil_length_each_dir-1;
@@ -696,6 +791,7 @@ WarpX::AddCurrentFromFineLevelandSumBoundary (int lev)
             }
             else if (use_filter) // but no buffer
             {
+                amrex::Abort("BBBBB");
                 // coarse patch of fine level
                 IntVect ng = current_cp[lev+1][idim]->nGrowVect();
                 ng += bilinear_filter.stencil_length_each_dir-1;
@@ -707,6 +803,7 @@ WarpX::AddCurrentFromFineLevelandSumBoundary (int lev)
             }
             else if (current_buf[lev+1][idim]) // but no filter
             {
+                amrex::Abort("CCCCC");
                 MultiFab::Add(*current_buf[lev+1][idim],
                                *current_cp [lev+1][idim], 0, 0, current_buf[lev+1][idim]->nComp(),
                                current_cp[lev+1][idim]->nGrow());
@@ -717,6 +814,7 @@ WarpX::AddCurrentFromFineLevelandSumBoundary (int lev)
             }
             else // no filter, no buffer
             {
+                // amrex::Abort("DDDDD");
                 mf.ParallelAdd(*current_cp[lev+1][idim], 0, 0, current_cp[lev+1][idim]->nComp(),
                                current_cp[lev+1][idim]->nGrowVect(), IntVect::TheZeroVector(),
                                period);
