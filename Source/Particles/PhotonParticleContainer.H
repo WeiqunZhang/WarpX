@@ -1,9 +1,23 @@
+/* Copyright 2019 Andrew Myers, David Grote, Luca Fedeli
+ * Maxence Thevenet, Weiqun Zhang
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef WARPX_PhotonParticleContainer_H_
 #define WARPX_PhotonParticleContainer_H_
 
-#include <PhysicalParticleContainer.H>
+#include "PhysicalParticleContainer.H"
 #include <AMReX_Vector.H>
 
+/**
+ * Photon particles have no mass, they deposit no charge, and see specific QED
+ * effects. For these reasons, they are stored in the separate particle
+ * container PhotonParticleContainer, that inherts from
+ * PhysicalParticleContainer. The particle pusher and current deposition, in
+ * particular, are overriden in this container.
+ */
 class PhotonParticleContainer
     : public PhysicalParticleContainer
 {
@@ -41,14 +55,21 @@ public:
                          const amrex::MultiFab* cBy,
                          const amrex::MultiFab* cBz,
                          amrex::Real t,
-                         amrex::Real dt) override;
+                         amrex::Real dt,
+                         DtType a_dt_type=DtType::Full) override;
 
     virtual void PushPX(WarpXParIter& pti,
-                        amrex::Cuda::ManagedDeviceVector<amrex::Real>& xp,
-                        amrex::Cuda::ManagedDeviceVector<amrex::Real>& yp,
-                        amrex::Cuda::ManagedDeviceVector<amrex::Real>& zp,
-                        amrex::Real dt) override;
+                        amrex::Real dt, DtType a_dt_type=DtType::Full) override;
 
+    // Do nothing
+    virtual void PushP (int lev,
+                        amrex::Real dt,
+                        const amrex::MultiFab& Ex,
+                        const amrex::MultiFab& Ey,
+                        const amrex::MultiFab& Ez,
+                        const amrex::MultiFab& Bx,
+                        const amrex::MultiFab& By,
+                        const amrex::MultiFab& Bz) override {};
 
 
     // DepositCurrent should do nothing for photons
@@ -66,7 +87,24 @@ public:
                                 int thread_num,
                                 int lev,
                                 int depos_lev,
-                                amrex::Real dt)  {};
+                                amrex::Real dt) override {};
+    //Photons are not leptons
+    virtual bool AmIALepton () override
+    {
+        return false;
+    };
+
+#ifdef WARPX_QED
+    /**
+     * This function evolves the optical depth of the photons if QED effects
+     * are enabled.
+     * @param[in,out] pti particle iterator (optical depth will be modified)
+     * @param[in] dt temporal step
+     */
+    virtual void EvolveOpticalDepth(WarpXParIter& pti,
+        amrex::Real dt) override;
+
+#endif
 
 };
 

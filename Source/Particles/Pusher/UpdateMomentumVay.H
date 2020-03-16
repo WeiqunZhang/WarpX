@@ -1,17 +1,26 @@
+/* Copyright 2019 David Grote, Maxence Thevenet, Remi Lehe
+ * Weiqun Zhang
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef WARPX_PARTICLES_PUSHER_UPDATEMOMENTUM_VAY_H_
 #define WARPX_PARTICLES_PUSHER_UPDATEMOMENTUM_VAY_H_
 
-#include <AMReX_FArrayBox.H>
-#include <WarpXConst.H>
-#include <AMReX_REAL.H>
+#include "Utils/WarpXConst.H"
 
-/* \brief Push the particle's positions over one timestep,
+#include <AMReX_REAL.H>
+#include <AMReX_FArrayBox.H>
+
+
+/** \brief Push the particle's positions over one timestep,
  *    given the value of its momenta `ux`, `uy`, `uz` */
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
 void UpdateMomentumVay(
-    amrex::Real& ux, amrex::Real& uy, amrex::Real& uz,
-    const amrex::Real Ex, const amrex::Real Ey, const amrex::Real Ez,
-    const amrex::Real Bx, const amrex::Real By, const amrex::Real Bz,
+    amrex::ParticleReal& ux, amrex::ParticleReal& uy, amrex::ParticleReal& uz,
+    const amrex::ParticleReal Ex, const amrex::ParticleReal Ey, const amrex::ParticleReal Ez,
+    const amrex::ParticleReal Bx, const amrex::ParticleReal By, const amrex::ParticleReal Bz,
     const amrex::Real q, const amrex::Real m, const amrex::Real dt )
 {
     // Constants

@@ -1,5 +1,10 @@
+/* Copyright 2019 Maxence Thevenet, Weiqun Zhang
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #include <AMReX_MultiFab.H>
-#include <AMReX_CudaContainers.H>
 
 #ifndef WARPX_FILTER_H_
 #define WARPX_FILTER_H_

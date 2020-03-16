@@ -1,3 +1,10 @@
+/* Copyright 2019 Remi Lehe, Revathi Jambunathan, Revathi Jambunathan
+ *
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef WARPX_PML_KERNELS_H_
 #define WARPX_PML_KERNELS_H_
 
@@ -85,7 +92,8 @@ void warpx_push_pml_bx_ckc(int i, int j, int k, Array4<Real> const&Bx,
                           - Ez(i+1,j  ,k-1,0) - Ez(i+1,j  ,k-1,1) - Ez(i+1,j  ,k-1,2)
                           + Ez(i-1,j+1,k-1,0) + Ez(i-1,j+1,k-1,1) + Ez(i-1,j+1,k-1,2)
                           - Ez(i-1,j  ,k-1,0) - Ez(i-1,j  ,k-1,1) - Ez(i-1,j  ,k-1,2));
-   Bx(i,j,k,1) +=   alphaz*(Ey(i  ,j  ,k+1,0) + Ey(i  ,j  ,k+1,1) + Ez(i  ,j  ,k+1,2)
+
+   Bx(i,j,k,1) +=   alphaz*(Ey(i  ,j  ,k+1,0) + Ey(i  ,j  ,k+1,1) + Ey(i  ,j  ,k+1,2)
                           - Ey(i  ,j  ,k  ,0) - Ey(i  ,j  ,k  ,1) - Ey(i  ,j  ,k  ,2))
                    +betazx*(Ey(i+1,j  ,k+1,0) + Ey(i+1,j  ,k+1,1) + Ey(i+1,j  ,k+1,2)
                           - Ey(i+1,j  ,k  ,0) - Ey(i+1,j  ,k  ,1) - Ey(i+1,j  ,k  ,2)
@@ -101,7 +109,7 @@ void warpx_push_pml_bx_ckc(int i, int j, int k, Array4<Real> const&Bx,
                           - Ey(i-1,j+1,k  ,0) - Ey(i-1,j+1,k  ,1) - Ey(i-1,j+1,k  ,2)
                           + Ey(i+1,j-1,k+1,0) + Ey(i+1,j-1,k+1,1) + Ey(i+1,j-1,k+1,2)
                           - Ey(i+1,j-1,k  ,0) - Ey(i+1,j-1,k  ,1) - Ey(i+1,j-1,k  ,2)
-                          + Ey(i-1,j-1,k+1,0) + Ey(i-1,j-1,k+1,1) + Ey(i-1,j-1,k+1,1)
+                          + Ey(i-1,j-1,k+1,0) + Ey(i-1,j-1,k+1,1) + Ey(i-1,j-1,k+1,2)
                           - Ey(i-1,j-1,k  ,0) - Ey(i-1,j-1,k  ,1) - Ey(i-1,j-1,k  ,2));
 
 #else

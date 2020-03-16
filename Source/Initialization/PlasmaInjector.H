@@ -1,12 +1,21 @@
+/* Copyright 2019 Andrew Myers, Axel Huebl, David Grote
+ * Maxence Thevenet, Remi Lehe, Weiqun Zhang
+ *
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef PLASMA_INJECTOR_H_
 #define PLASMA_INJECTOR_H_
 
-#include <InjectorPosition.H>
-#include <InjectorDensity.H>
-#include <InjectorMomentum.H>
+#include "SpeciesPhysicalProperties.H"
+#include "InjectorPosition.H"
+#include "InjectorDensity.H"
+#include "InjectorMomentum.H"
 
-#include <WarpXConst.H>
-#include <WarpXParser.H>
+#include "Utils/WarpXConst.H"
+#include "Parser/WarpXParser.H"
 
 #include <AMReX_Vector.H>
 #include <AMReX_ParmParse.H>
@@ -39,13 +48,14 @@ public:
 
     amrex::Real getCharge () {return charge;}
     amrex::Real getMass () {return mass;}
+    PhysicalSpecies getPhysicalSpecies() const {return physical_species;}
 
     bool doInjection () const noexcept { return inj_pos != NULL;}
 
     bool add_single_particle = false;
-    amrex::Vector<amrex::Real> single_particle_pos;
-    amrex::Vector<amrex::Real> single_particle_vel;
-    amrex::Real single_particle_weight;
+    amrex::Vector<amrex::ParticleReal> single_particle_pos;
+    amrex::Vector<amrex::ParticleReal> single_particle_vel;
+    amrex::ParticleReal single_particle_weight;
 
     bool gaussian_beam = false;
     amrex::Real x_m;
@@ -75,18 +85,11 @@ public:
     InjectorDensity*  getInjectorDensity ();
     InjectorMomentum* getInjectorMomentum ();
 
-    // When running on GPU, injector for position, momentum and density store
-    // particle 3D positions in shared memory IF using the parser.
-    std::size_t
-    sharedMemoryNeeded () const noexcept {
-        return amrex::max(inj_pos->sharedMemoryNeeded(),
-                          inj_rho->sharedMemoryNeeded(),
-                          inj_mom->sharedMemoryNeeded());
-    }
-
 protected:
 
     amrex::Real mass, charge;
+
+    PhysicalSpecies physical_species;
 
     amrex::Real density;
 

@@ -1,19 +1,26 @@
+/* Copyright 2019 Aurore Blelly, Axel Huebl, Maxence Thevenet
+ * Remi Lehe, Revathi Jambunathan
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
+#include "WarpX.H"
+#include "Utils/WarpXConst.H"
+#include "WarpX_PML_kernels.H"
+#ifdef WARPX_USE_PY
+#   include "Python/WarpX_py.H"
+#endif
+
+#include "PML_current.H"
+
+#ifdef BL_USE_SENSEI_INSITU
+#   include <AMReX_AmrMeshInSituBridge.H>
+#endif
+
 #include <cmath>
 #include <limits>
 
-#include <WarpX.H>
-#include <WarpXConst.H>
-#include <WarpX_f.H>
-#include <WarpX_PML_kernels.H>
-#ifdef WARPX_USE_PY
-#include <WarpX_py.H>
-#endif
-
-#ifdef BL_USE_SENSEI_INSITU
-#include <AMReX_AmrMeshInSituBridge.H>
-#endif
-
-#include <PML_current.H>
 
 using namespace amrex;
 
@@ -37,7 +44,7 @@ WarpX::DampPML (int lev, PatchType patch_type)
 {
     if (!do_pml) return;
 
-    BL_PROFILE("WarpX::DampPML()");
+    WARPX_PROFILE("WarpX::DampPML()");
 
     if (pml[lev]->ok())
     {
@@ -81,13 +88,13 @@ WarpX::DampPML (int lev, PatchType patch_type)
             amrex::Real const * AMREX_RESTRICT sigma_star_fac_y = nullptr;
             amrex::Real const * AMREX_RESTRICT sigma_star_fac_z = sigba[mfi].sigma_star_fac[1].data();
 #endif
-            auto const& AMREX_RESTRICT x_lo = sigba[mfi].sigma_fac[0].lo();
+            int const x_lo = sigba[mfi].sigma_fac[0].lo();
 #if (AMREX_SPACEDIM == 3)
-            auto const& AMREX_RESTRICT y_lo = sigba[mfi].sigma_fac[1].lo();
-            auto const& AMREX_RESTRICT z_lo = sigba[mfi].sigma_fac[2].lo();
+            int const y_lo = sigba[mfi].sigma_fac[1].lo();
+            int const z_lo = sigba[mfi].sigma_fac[2].lo();
 #else
-            int y_lo = 0;
-            auto const& AMREX_RESTRICT z_lo = sigba[mfi].sigma_fac[1].lo();
+            int const y_lo = 0;
+            int const z_lo = sigba[mfi].sigma_fac[1].lo();
 #endif
 
             amrex::ParallelFor(tex, tey, tez,
@@ -159,7 +166,7 @@ WarpX::DampJPML (int lev, PatchType patch_type)
     if (!do_pml) return;
     if (!do_pml_j_damping) return;
 
-    BL_PROFILE("WarpX::DampJPML()");
+    WARPX_PROFILE("WarpX::DampJPML()");
 
     if (pml[lev]->ok())
     {
@@ -193,22 +200,22 @@ WarpX::DampJPML (int lev, PatchType patch_type)
             const Box& tjy  = mfi.tilebox(jy_nodal_flag);
             const Box& tjz  = mfi.tilebox(jz_nodal_flag);
 
-            auto const& AMREX_RESTRICT x_lo = sigba[mfi].sigma_cumsum_fac[0].lo();
+            int const x_lo = sigba[mfi].sigma_cumsum_fac[0].lo();
 #if (AMREX_SPACEDIM == 3)
-            auto const& AMREX_RESTRICT y_lo = sigba[mfi].sigma_cumsum_fac[1].lo();
-            auto const& AMREX_RESTRICT z_lo = sigba[mfi].sigma_cumsum_fac[2].lo();
+            int const y_lo = sigba[mfi].sigma_cumsum_fac[1].lo();
+            int const z_lo = sigba[mfi].sigma_cumsum_fac[2].lo();
 #else
-            int y_lo = 0;
-            auto const& AMREX_RESTRICT z_lo = sigba[mfi].sigma_cumsum_fac[1].lo();
+            int const y_lo = 0;
+            int const z_lo = sigba[mfi].sigma_cumsum_fac[1].lo();
 #endif
 
-            auto const& AMREX_RESTRICT xs_lo = sigba[mfi].sigma_star_cumsum_fac[0].lo();
+            int const xs_lo = sigba[mfi].sigma_star_cumsum_fac[0].lo();
 #if (AMREX_SPACEDIM == 3)
-            auto const& AMREX_RESTRICT ys_lo = sigba[mfi].sigma_star_cumsum_fac[1].lo();
-            auto const& AMREX_RESTRICT zs_lo = sigba[mfi].sigma_star_cumsum_fac[2].lo();
+            int const ys_lo = sigba[mfi].sigma_star_cumsum_fac[1].lo();
+            int const zs_lo = sigba[mfi].sigma_star_cumsum_fac[2].lo();
 #else
-            int ys_lo = 0;
-            auto const& AMREX_RESTRICT zs_lo = sigba[mfi].sigma_star_cumsum_fac[1].lo();
+            int const ys_lo = 0;
+            int const zs_lo = sigba[mfi].sigma_star_cumsum_fac[1].lo();
 #endif
 
             amrex::ParallelFor( tjx, tjy, tjz,
@@ -233,7 +240,9 @@ WarpX::DampJPML (int lev, PatchType patch_type)
     }
 }
 
-/* \brief Copy the current J from the regular grid to the PML */
+/**
+ * \brief Copy the current J from the regular grid to the PML
+ */
 void
 WarpX::CopyJPML ()
 {

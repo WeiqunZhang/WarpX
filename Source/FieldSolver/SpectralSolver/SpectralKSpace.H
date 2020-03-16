@@ -1,9 +1,18 @@
+/* Copyright 2019 David Grote, Maxence Thevenet, Remi Lehe
+ *
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
 #ifndef WARPX_SPECTRAL_K_SPACE_H_
 #define WARPX_SPECTRAL_K_SPACE_H_
 
-#include <WarpX_ComplexForFFT.H>
+#include "Utils/WarpX_Complex.H"
+
 #include <AMReX_BoxArray.H>
 #include <AMReX_LayoutData.H>
+
 
 // `KVectorComponent` and `SpectralShiftFactor` hold one 1D array
 // ("ManagedVector") for each box ("LayoutData"). The arrays are
@@ -19,7 +28,8 @@ struct ShiftType {
     enum{ TransformFromCellCentered=0, TransformToCellCentered=1 };
 };
 
-/* \brief Class that represents the spectral space.
+/**
+ * \brief Class that represents the spectral space.
  *
  * (Contains info about the size of the spectral space corresponding
  * to each box in `realspace_ba`, as well as the value of the
