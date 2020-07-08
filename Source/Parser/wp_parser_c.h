@@ -22,8 +22,12 @@ extern "C" {
 #include <set>
 #include <string>
 
+template <int Depth>
 AMREX_GPU_HOST_DEVICE
-inline amrex_real
+#ifdef AMREX_USE_GPU
+AMREX_NO_INLINE
+#endif
+amrex_real
 wp_ast_eval (struct wp_node* node, amrex_real const* x)
 {
 #if defined(__SYCL_DEVICE_ONLY__)
@@ -51,40 +55,40 @@ wp_ast_eval (struct wp_node* node, amrex_real const* x)
     }
     case WP_ADD:
     {
-        result = wp_ast_eval(node->l,x) + wp_ast_eval(node->r,x);
+        result = wp_ast_eval<Depth+1>(node->l,x) + wp_ast_eval<Depth+1>(node->r,x);
         break;
     }
     case WP_SUB:
     {
-        result = wp_ast_eval(node->l,x) - wp_ast_eval(node->r,x);
+        result = wp_ast_eval<Depth+1>(node->l,x) - wp_ast_eval<Depth+1>(node->r,x);
         break;
     }
     case WP_MUL:
     {
-        result = wp_ast_eval(node->l,x) * wp_ast_eval(node->r,x);
+        result = wp_ast_eval<Depth+1>(node->l,x) * wp_ast_eval<Depth+1>(node->r,x);
         break;
     }
     case WP_DIV:
     {
-        result = wp_ast_eval(node->l,x) / wp_ast_eval(node->r,x);
+        result = wp_ast_eval<Depth+1>(node->l,x) / wp_ast_eval<Depth+1>(node->r,x);
         break;
     }
     case WP_NEG:
     {
-        result = -wp_ast_eval(node->l,x);
+        result = -wp_ast_eval<Depth+1>(node->l,x);
         break;
     }
     case WP_F1:
     {
         result = wp_call_f1(((struct wp_f1*)node)->ftype,
-                wp_ast_eval(((struct wp_f1*)node)->l,x));
+                wp_ast_eval<Depth+1>(((struct wp_f1*)node)->l,x));
         break;
     }
     case WP_F2:
     {
         result = wp_call_f2(((struct wp_f2*)node)->ftype,
-                wp_ast_eval(((struct wp_f2*)node)->l,x),
-                wp_ast_eval(((struct wp_f2*)node)->r,x));
+                wp_ast_eval<Depth+1>(((struct wp_f2*)node)->l,x),
+                wp_ast_eval<Depth+1>(((struct wp_f2*)node)->r,x));
         break;
     }
     case WP_ADD_VP:
@@ -188,6 +192,14 @@ wp_ast_eval (struct wp_node* node, amrex_real const* x)
     return result;
 #endif
 }
+
+template <>
+AMREX_GPU_HOST_DEVICE
+#ifdef AMREX_USE_GPU
+AMREX_NO_INLINE
+#endif
+amrex_real
+wp_ast_eval<WARPX_MAX_RECURSION_DEPTH> (struct wp_node* node, amrex_real const* x);
 
 inline
 void
