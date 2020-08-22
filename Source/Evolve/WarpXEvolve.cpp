@@ -20,6 +20,8 @@
 #include "FieldSolver/SpectralSolver/SpectralSolver.H"
 #endif
 
+#include <AMReX_VisMF.H>
+
 #include <cmath>
 #include <limits>
 
@@ -239,6 +241,12 @@ WarpX::Evolve (int numsteps)
         if (warpx_py_afterstep) warpx_py_afterstep();
 #endif
         // End loop on time steps
+
+#ifdef AMREX_USE_GPU
+        if (step % 2 == 1) {
+            amrex::AsyncOut::Finish(); // xxxxx disable it for cpuu, otherwise Langmuir cpu 2d run segfault
+        }
+#endif
     }
 
     multi_diags->FilterComputePackFlush( istep[0], true );

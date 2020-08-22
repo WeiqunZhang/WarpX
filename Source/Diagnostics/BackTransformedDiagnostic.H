@@ -88,7 +88,7 @@ class LabFrameDiag {
     /// extent of the z_lab multifab intersects with the user-defined sub-domain
     /// for the reduced diagnostic (i.e., a 1D, 2D, or 3D region of the domain).
     virtual void AddDataToBuffer(amrex::MultiFab& /*tmp_slice_ptr*/, int /*i_lab*/,
-                 amrex::Gpu::ManagedDeviceVector<int> /*map_actual_fields_to_dump*/){}
+                 amrex::Vector<int> /*map_actual_fields_to_dump*/){}
 
     /// Back-transformed lab-frame particles is copied from
     /// tmp_particle_buffer to particles_buffer.
@@ -120,7 +120,7 @@ class LabFrameSnapShot : public LabFrameDiag {
                      amrex::RealBox diag_domain_lab,
                      amrex::Box diag_box, int file_num_in);
     void AddDataToBuffer( amrex::MultiFab& tmp_slice, int k_lab,
-         amrex::Gpu::ManagedDeviceVector<int> map_actual_fields_to_dump) override;
+         amrex::Vector<int> map_actual_fields_to_dump) override;
     void AddPartDataToParticleBuffer(
          amrex::Vector<WarpXParticleContainer::DiagnosticParticleData> tmp_particle_buffer,
          int nSpeciesBoostedFrame) override;
@@ -147,7 +147,7 @@ class LabFrameSlice : public LabFrameDiag {
                      amrex::Box diag_box, int file_num_in,
                      amrex::Real particle_slice_dx_lab);
     void AddDataToBuffer( amrex::MultiFab& tmp_slice_ptr, int i_lab,
-         amrex::Gpu::ManagedDeviceVector<int> map_actual_fields_to_dump) override;
+         amrex::Vector<int> map_actual_fields_to_dump) override;
     void AddPartDataToParticleBuffer(
          amrex::Vector<WarpXParticleContainer::DiagnosticParticleData> tmp_particle_buffer,
          int nSpeciesBoostedFrame) override;
@@ -260,7 +260,7 @@ private:
     // maps field index in data_buffer_[i] -> cell_centered_data for
     // snapshots i. By default, all fields in cell_centered_data are dumped.
     // Needs to be amrex::Vector because used in a ParallelFor kernel.
-    amrex::Gpu::ManagedDeviceVector<int> map_actual_fields_to_dump;
+    amrex::Vector<int> map_actual_fields_to_dump;
     // Name of fields to dump. By default, all fields in cell_centered_data.
     // Needed for file headers only.
     std::vector<std::string> m_mesh_field_names = {"Ex", "Ey", "Ez",
