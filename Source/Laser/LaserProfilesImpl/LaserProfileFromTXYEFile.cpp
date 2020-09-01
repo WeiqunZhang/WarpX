@@ -192,7 +192,6 @@ WarpXLaserProfiles::FromTXYEFileLaserProfile::parse_txye_file(std::string txye_f
     char is_grid_uniform = m_params.is_grid_uniform;
     ParallelDescriptor::Bcast(&is_grid_uniform, 1,
         ParallelDescriptor::IOProcessorNumber());
-    ParallelDescriptor::Barrier();
     m_params.is_grid_uniform = is_grid_uniform;
 
     //Broadcast grid size and coordinate sizes
@@ -222,7 +221,6 @@ WarpXLaserProfiles::FromTXYEFileLaserProfile::parse_txye_file(std::string txye_f
         m_params.h_x_coords.size(), ParallelDescriptor::IOProcessorNumber());
     ParallelDescriptor::Bcast(m_params.h_y_coords.dataPtr(),
         m_params.h_y_coords.size(), ParallelDescriptor::IOProcessorNumber());
-    ParallelDescriptor::Barrier();
 
     m_params.d_x_coords.resize(m_params.h_x_coords.size());
     m_params.d_y_coords.resize(m_params.h_y_coords.size());
