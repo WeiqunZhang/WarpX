@@ -106,7 +106,8 @@ bool WarpX::refine_plasma     = false;
 int WarpX::num_mirrors = 0;
 
 IntervalsParser WarpX::sort_intervals;
-amrex::IntVect WarpX::sort_bin_size(AMREX_D_DECL(1,1,1));
+amrex::IntVect WarpX::sort_bin_size(AMREX_D_DECL(4,4,4)); // xxxxx change to 4 for now
+                                                          // Note that the doc says 4.
 
 bool WarpX::do_back_transformed_diagnostics = false;
 std::string WarpX::lab_data_directory = "lab_frame_data";

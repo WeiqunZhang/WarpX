@@ -1738,9 +1738,6 @@ PhysicalParticleContainer::ContinuousInjection (const RealBox& injection_box)
     AddPlasma(lev, injection_box);
 }
 
-/* \brief Perform the field gather and particle push operations in one fused kernel
- *
- */
 void
 PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                                    amrex::FArrayBox const * exfab,
@@ -1749,12 +1746,309 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                                    amrex::FArrayBox const * bxfab,
                                    amrex::FArrayBox const * byfab,
                                    amrex::FArrayBox const * bzfab,
-                                   const int ngE, const int /*e_is_nodal*/,
+                                   const int ngE, const int e_is_nodal,
                                    const long offset,
                                    const long np_to_push,
                                    int lev, int gather_lev,
                                    amrex::Real dt, ScaleFields scaleFields,
                                    DtType a_dt_type)
+{
+#ifdef AMREX_USE_GPU
+    if (1) {
+        PushPX_shared(pti, exfab, eyfab, ezfab, bxfab, byfab, bzfab, ngE, e_is_nodal,
+                      offset, np_to_push, lev, gather_lev, dt, scaleFields, a_dt_type);
+    } else
+#endif
+    {
+        PushPX_noshared(pti, exfab, eyfab, ezfab, bxfab, byfab, bzfab, ngE, e_is_nodal,
+                        offset, np_to_push, lev, gather_lev, dt, scaleFields, a_dt_type);
+    }
+}
+
+#ifdef AMREX_USE_GPU
+/* \brief Perform the field gather and particle push operations in one fused kernel.
+ *        This version uses GPU shared memory.
+ */
+void
+PhysicalParticleContainer::PushPX_shared (WarpXParIter& pti,
+                                          amrex::FArrayBox const * exfab,
+                                          amrex::FArrayBox const * eyfab,
+                                          amrex::FArrayBox const * ezfab,
+                                          amrex::FArrayBox const * bxfab,
+                                          amrex::FArrayBox const * byfab,
+                                          amrex::FArrayBox const * bzfab,
+                                          const int ngE, const int /*e_is_nodal*/,
+                                          const long offset,
+                                          const long np_to_push,
+                                          int lev, int gather_lev,
+                                          amrex::Real dt, ScaleFields scaleFields,
+                                          DtType a_dt_type)
+{
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE((gather_lev==(lev-1)) ||
+                                     (gather_lev==(lev  )),
+                                     "Gather buffers only work for lev-1");
+    // If no particles, do not do anything
+    if (np_to_push == 0) return;
+
+    // Get cell size on gather_lev
+    const std::array<Real,3>& dx = WarpX::CellSize(std::max(gather_lev,0));
+
+    // Get box from which field is gathered.
+    // If not gathering from the finest level, the box is coarsened.
+    Box box;
+    if (lev == gather_lev) {
+        box = pti.tilebox();
+    } else {
+        const IntVect& ref_ratio = WarpX::RefRatio(gather_lev);
+        box = amrex::coarsen(pti.tilebox(),ref_ratio);
+    }
+
+    const Box tilebox = box;
+    const Dim3 tlo = amrex::lbound(tilebox);
+
+    // Add guard cells to the box.
+    box.grow(ngE);
+
+    const auto getPosition = GetParticlePosition(pti, offset);
+          auto setPosition = SetParticlePosition(pti, offset);
+
+    const auto getExternalE = GetExternalEField(pti, offset);
+    const auto getExternalB = GetExternalBField(pti, offset);
+
+    // Lower corner of tile box physical domain (take into account Galilean shift)
+    Real cur_time = WarpX::GetInstance().gett_new(lev);
+    const auto& time_of_last_gal_shift = WarpX::GetInstance().time_of_last_gal_shift;
+    Real time_shift = (cur_time - time_of_last_gal_shift);
+    amrex::Array<amrex::Real,3> galilean_shift ={
+        m_v_galilean[0]*time_shift,
+        m_v_galilean[1]*time_shift,
+        m_v_galilean[2]*time_shift };
+    const std::array<Real, 3>& xyzmin = WarpX::LowerCorner(box, galilean_shift, gather_lev);
+
+    const Dim3 lo = lbound(box);
+
+    bool galerkin_interpolation = WarpX::galerkin_interpolation;
+    int nox = WarpX::nox;
+    int n_rz_azimuthal_modes = WarpX::n_rz_azimuthal_modes;
+
+    amrex::GpuArray<amrex::Real, 3> dx_arr = {dx[0], dx[1], dx[2]};
+    amrex::GpuArray<amrex::Real, 3> xyzmin_arr = {xyzmin[0], xyzmin[1], xyzmin[2]};
+
+    amrex::Array4<const amrex::Real> const& ex_arr = exfab->array();
+    amrex::Array4<const amrex::Real> const& ey_arr = eyfab->array();
+    amrex::Array4<const amrex::Real> const& ez_arr = ezfab->array();
+    amrex::Array4<const amrex::Real> const& bx_arr = bxfab->array();
+    amrex::Array4<const amrex::Real> const& by_arr = byfab->array();
+    amrex::Array4<const amrex::Real> const& bz_arr = bzfab->array();
+
+    amrex::IndexType const ex_type = exfab->box().ixType();
+    amrex::IndexType const ey_type = eyfab->box().ixType();
+    amrex::IndexType const ez_type = ezfab->box().ixType();
+    amrex::IndexType const bx_type = bxfab->box().ixType();
+    amrex::IndexType const by_type = byfab->box().ixType();
+    amrex::IndexType const bz_type = bzfab->box().ixType();
+
+    auto& attribs = pti.GetAttribs();
+    ParticleReal* const AMREX_RESTRICT ux = attribs[PIdx::ux].dataPtr();
+    ParticleReal* const AMREX_RESTRICT uy = attribs[PIdx::uy].dataPtr();
+    ParticleReal* const AMREX_RESTRICT uz = attribs[PIdx::uz].dataPtr();
+
+    auto copyAttribs = CopyParticleAttribs(pti, tmp_particle_data, offset);
+    int do_copy = (WarpX::do_back_transformed_diagnostics &&
+                          do_back_transformed_diagnostics &&
+                   (a_dt_type!=DtType::SecondHalf));
+
+    int* AMREX_RESTRICT ion_lev = nullptr;
+    if (do_field_ionization) {
+        ion_lev = pti.GetiAttribs(particle_icomps["ionization_level"]).dataPtr();
+    }
+
+    // Loop over the particles and update their momentum
+    const amrex::Real q = this->charge;
+    const amrex::Real m = this-> mass;
+
+    const auto pusher_algo = WarpX::particle_pusher_algo;
+    const auto do_crr = do_classical_radiation_reaction;
+#ifdef WARPX_QED
+    const auto do_sync = m_do_qed_quantum_sync;
+    amrex::Real t_chi_max = 0.0;
+    if (do_sync) t_chi_max = m_shr_p_qs_engine->get_minimum_chi_part();
+
+    QuantumSynchrotronEvolveOpticalDepth evolve_opt;
+    amrex::ParticleReal* AMREX_RESTRICT p_optical_depth_QSR = nullptr;
+    const bool local_has_quantum_sync = has_quantum_sync();
+    if (local_has_quantum_sync) {
+        evolve_opt = m_shr_p_qs_engine->build_evolve_functor();
+        p_optical_depth_QSR = pti.GetAttribs(particle_comps["optical_depth_QSR"]).dataPtr();
+    }
+#endif
+
+    const auto t_do_not_gather = do_not_gather;
+
+    const IntVect supercell_size(1,1,1); // = WarpX::sort_bin_size;
+    const IntVect tilebox_size = tilebox.size();
+    const IntVect nsucells_iv = (tilebox_size+supercell_size-1) / supercell_size;
+    const int numsupercells = AMREX_D_TERM(nsucells_iv[0],
+                                          *nsucells_iv[1],
+                                          *nsucells_iv[2]);
+    // This stores the begin/end of particle IDs for the supercells
+    amrex::Gpu::DeviceVector<int> pid_dv(numsupercells+1);
+    int* pid = pid_dv.data();
+
+    // xxxxx Let's assume it's 3d
+
+    amrex::Gpu::streamSynchronize();
+    { BL_PROFILE("supercell-prep");
+
+    amrex::ParallelFor(np_to_push, [=] AMREX_GPU_DEVICE (Long ip)
+    {
+        const amrex::Real dxi = 1.0_rt/dx_arr[0];
+        const amrex::Real dyi = 1.0_rt/dx_arr[1];
+        const amrex::Real dzi = 1.0_rt/dx_arr[2];
+
+        const amrex::Real xmin = xyzmin_arr[0];
+        const amrex::Real ymin = xyzmin_arr[1];
+        const amrex::Real zmin = xyzmin_arr[2];
+
+        auto getSuperCellID = [&] (Long pidx) {
+            amrex::ParticleReal xp, yp, zp;
+            getPosition(pidx, xp, yp, zp);
+            // xxxx Roundoff errors could get us into troubles
+            //      So we should consider clamp it.
+            //      What we really should do is to be consistent with the sorting,
+            //      which probably use the lower corner of Geometry, not local Box's
+            //      lower corner (e.g., xmin below).  That also means we should use
+            //      the Geometry's lower corner in the Gather routines.
+            int i = static_cast<int>((xp-xmin)*dxi) + lo.x - tlo.x;
+            int j = static_cast<int>((yp-ymin)*dyi) + lo.y - tlo.y;
+            int k = static_cast<int>((zp-zmin)*dzi) + lo.z - tlo.z;
+            // coarsen to get supercell indices
+            i = amrex::coarsen(i, supercell_size[0]);
+            j = amrex::coarsen(j, supercell_size[1]);
+            k = amrex::coarsen(k, supercell_size[2]);
+            return i + j*nsucells_iv[0] + k*nsucells_iv[0]*nsucells_iv[1];
+        };
+
+        int prev_part_scid = (ip > 0) ? getSuperCellID(ip-1) : -1;
+        int this_part_scid = getSuperCellID(ip);
+        for (int id = prev_part_scid+1; id <= this_part_scid; ++id) {
+            pid[id] = ip;
+        }
+        if (ip == np_to_push-1) {
+            for (int id = this_part_scid+1; id <= numsupercells; ++id) {
+                pid[id] = numsupercells;
+            }
+        }
+    });
+
+    amrex::Gpu::streamSynchronize();
+    } // closes { BL_PROFILE("supercell-prep");
+
+    constexpr int nthreads = AMREX_GPU_MAX_THREADS;
+    const int nblocks = numsupercells;
+    const Box supercellbox(IntVect(0)-ngE,supercell_size-1+ngE);
+    std::size_t shared_mem_bytes = sizeof(amrex::Real) *
+        (amrex::convert(supercellbox,ex_type).numPts() +
+         amrex::convert(supercellbox,ey_type).numPts() +
+         amrex::convert(supercellbox,ez_type).numPts() +
+         amrex::convert(supercellbox,bx_type).numPts() +
+         amrex::convert(supercellbox,by_type).numPts() +
+         amrex::convert(supercellbox,bz_type).numPts());
+
+    amrex::Print() << "xxxxx shared_mem_bytes = " << shared_mem_bytes/1024 << "KB"
+                   << ", ngE = " << ngE
+                   << " supercellbox = " << supercellbox
+                   << std::endl;
+
+    { BL_PROFILE("new-pushpx");
+
+    amrex::launch(nblocks, nthreads, shared_mem_bytes, Gpu::gpuStream(),
+    [=] AMREX_GPU_DEVICE ()
+    {
+        const int isucell = blockIdx.x;
+        const int kk =  isucell /    (nsucells_iv[0]*nsucells_iv[1]); // supercell id
+        const int jj = (isucell - kk*(nsucells_iv[0]*nsucells_iv[1])) /    nsucells_iv[0];
+        const int ii = (isucell - kk*(nsucells_iv[0]*nsucells_iv[1])) - jj*nsucells_iv[0];
+        // Give the supercell index (ii,jj,kk), we can compute the supercell Box in normal index
+        IntVect sclo(ii+supercell_size[0], jj*supercell_size[1], kk*supercell_size[2]);
+        Box superbox(sclo, sclo+supercell_size-1);
+        superbox.grow(ngE);
+        superbox &= box; // valid box may not be a multiple of supercell size
+
+        amrex::Gpu::SharedMemory<Real> gsm;
+        Real* p = gsm.dataPtr();
+
+        auto copy_to_shared = [&] (Array4<Real const> const& a, IndexType typ)
+        {
+            const Box& b = amrex::convert(superbox, typ);
+            Array4<Real const> arr(p, amrex::begin(b), amrex::end(b), 1);
+            for (int icell = threadIdx.x; icell < b.numPts(); icell += blockIdx.x) {
+                IntVect iv = b.atOffset(icell);
+                p[icell] = a(iv[0],iv[1],iv[2]);
+            }
+            p += arr.size();
+            return arr;
+        };
+
+        auto Ex = copy_to_shared(ex_arr, ex_type);
+        auto Ey = copy_to_shared(ey_arr, ey_type);
+        auto Ez = copy_to_shared(ez_arr, ez_type);
+        auto Bx = copy_to_shared(bx_arr, bx_type);
+        auto By = copy_to_shared(by_arr, by_type);
+        auto Bz = copy_to_shared(bz_arr, bz_type);
+
+        __syncthreads();
+
+        const int np = pid[isucell+1] - pid[isucell];
+        for (int offset = threadIdx.x; offset < np; offset += blockDim.x) {
+            const int ip = pid[isucell] + offset;
+
+            amrex::ParticleReal xp, yp, zp;
+            getPosition(ip, xp, yp, zp);
+
+            amrex::ParticleReal Exp = 0._rt, Eyp = 0._rt, Ezp = 0._rt;
+            amrex::ParticleReal Bxp = 0._rt, Byp = 0._rt, Bzp = 0._rt;
+
+            if(!t_do_not_gather){
+                // first gather E and B to the particle positions
+                doGatherShapeN(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                               Ex, Ey, Ez, Bx, By, Bz,
+                               ex_type, ey_type, ez_type, bx_type, by_type, bz_type,
+                               dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
+                               nox, galerkin_interpolation);
+            }
+
+            doParticlePush(getPosition, setPosition, copyAttribs, ip,
+                           ux[ip+offset], uy[ip+offset], uz[ip+offset],
+                           Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                           ion_lev ? ion_lev[ip] : 0,
+                           m, q, pusher_algo, do_crr, do_copy,
+                           dt);
+        }
+    });
+
+    Gpu::streamSynchronize();
+    } // closes { BL_PROFILE("new-pushpx");
+}
+#endif
+
+/* \brief Perform the field gather and particle push operations in one fused kernel.
+ *        This version does not use GPU shared memory.
+ */
+void
+PhysicalParticleContainer::PushPX_noshared (WarpXParIter& pti,
+                                            amrex::FArrayBox const * exfab,
+                                            amrex::FArrayBox const * eyfab,
+                                            amrex::FArrayBox const * ezfab,
+                                            amrex::FArrayBox const * bxfab,
+                                            amrex::FArrayBox const * byfab,
+                                            amrex::FArrayBox const * bzfab,
+                                            const int ngE, const int /*e_is_nodal*/,
+                                            const long offset,
+                                            const long np_to_push,
+                                            int lev, int gather_lev,
+                                            amrex::Real dt, ScaleFields scaleFields,
+                                            DtType a_dt_type)
 {
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE((gather_lev==(lev-1)) ||
                                      (gather_lev==(lev  )),
@@ -1854,6 +2148,9 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
 
     const auto t_do_not_gather = do_not_gather;
 
+    amrex::Gpu::streamSynchronize();
+    { BL_PROFILE("current-pushpx");
+
     amrex::ParallelFor( np_to_push, [=] AMREX_GPU_DEVICE (long ip)
     {
         amrex::ParticleReal xp, yp, zp;
@@ -1870,33 +2167,18 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                            dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
                            nox, galerkin_interpolation);
         }
-        // Externally applied E-field in Cartesian co-ordinates
-        getExternalE(ip, Exp, Eyp, Ezp);
-        // Externally applied B-field in Cartesian co-ordinates
-        getExternalB(ip, Bxp, Byp, Bzp);
-
-        scaleFields(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
 
         doParticlePush(getPosition, setPosition, copyAttribs, ip,
                        ux[ip+offset], uy[ip+offset], uz[ip+offset],
                        Exp, Eyp, Ezp, Bxp, Byp, Bzp,
                        ion_lev ? ion_lev[ip] : 0,
                        m, q, pusher_algo, do_crr, do_copy,
-#ifdef WARPX_QED
-                       do_sync,
-                       t_chi_max,
-#endif
                        dt);
-
-#ifdef WARPX_QED
-    if (local_has_quantum_sync) {
-        evolve_opt(ux[ip], uy[ip], uz[ip],
-                   Exp, Eyp, Ezp,Bxp, Byp, Bzp,
-                   dt, p_optical_depth_QSR[ip]);
-    }
-#endif
-
     });
+
+    Gpu::streamSynchronize();
+    } // closes { BL_PROFILE("current-pushpx");
+
 }
 
 void

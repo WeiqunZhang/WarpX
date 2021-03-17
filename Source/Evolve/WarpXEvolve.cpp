@@ -84,6 +84,8 @@ WarpX::Evolve (int numsteps)
             }
         }
 
+        mypc->SortParticlesByBin(sort_bin_size);
+
         // At the beginning, we have B^{n} and E^{n}.
         // Particles have p^{n} and x^{n}.
         // is_synchronized is true.
@@ -231,10 +233,10 @@ WarpX::Evolve (int numsteps)
         }
 
 
-        if (sort_intervals.contains(step+1)) {
-            amrex::Print() << "re-sorting particles \n";
-            mypc->SortParticlesByBin(sort_bin_size);
-        }
+//        if (sort_intervals.contains(step+1)) {
+//            amrex::Print() << "re-sorting particles \n";
+//            mypc->SortParticlesByBin(sort_bin_size);
+//        }
 
         if( do_electrostatic != ElectrostaticSolverAlgo::None ) {
             // Electrostatic solver:
