@@ -1268,6 +1268,13 @@ private:
      * time per iteration per particle is computed. */
     amrex::Real costs_heuristic_particles_wt = amrex::Real(0);
 
+    /** If true, the boxes in the coarse region covered by fine are
+     * coarsened from fine boxes directly and the corresponding pairs are
+     * owned by the same MPI ranks. */
+    bool do_aggressive_level_colocation = false;
+    amrex::BoxArray tmp_fine_grids;
+    amrex::DistributionMapping tmp_fine_dmap;
+
     // Determines timesteps for override sync
     IntervalsParser override_sync_intervals;
 

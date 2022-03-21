@@ -917,6 +917,11 @@ WarpX::ReadParameters ()
         {
             amrex::Abort("\nFinite-order centering of currents is not implemented with mesh refinement");
         }
+
+        if (max_level == 1) { // Right now max_level > 1 is not supported
+            pp_warpx.queryAdd("do_aggressive_level_colocation",
+                              do_aggressive_level_colocation);
+        }
     }
 
     {
@@ -1452,7 +1457,51 @@ void
 WarpX::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& new_grids,
                                 const DistributionMapping& new_dmap)
 {
-    AllocLevelData(lev, new_grids, new_dmap);
+    BoxArray level_ba;
+    DistributionMapping level_dm;
+    if (max_level > 0 && do_aggressive_level_colocation) {
+        if (lev == 0) {
+            Vector<BoxArray> vgrids(2);
+            vgrids[0] = new_grids;
+            int new_finest;
+            SetBoxArray(0, new_grids);
+            SetDistributionMap(0, new_dmap);
+            AmrMesh::MakeNewGrids(0, time, new_finest, vgrids);
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(new_finest == 1, "We can relax this later");
+            tmp_fine_grids = vgrids[1];
+            tmp_fine_dmap = DistributionMapping(tmp_fine_grids);
+
+            const Box fine_box = vgrids[1].simplified().minimalBox();
+            const Box crse_box = vgrids[0].simplified().minimalBox();
+            AMREX_ASSERT(fine_box.numPts() == vgrids[1].numPts() &&
+                         crse_box.numPts() == vgrids[0].numPts());
+            const IntVect rr = refRatio(0);
+            BoxList uncovered_cbl = amrex::boxDiff(crse_box, amrex::coarsen(fine_box,rr));
+            uncovered_cbl.maxSize(maxGridSize(0));
+            BoxList cbl = amrex::coarsen(tmp_fine_grids, rr).boxList();
+            cbl.join(uncovered_cbl);
+            level_ba = BoxArray(std::move(cbl));
+
+            const DistributionMapping uncovered_cdm(BoxArray(std::move(uncovered_cbl)));
+            const Vector<int>& uncovered_cpm = uncovered_cdm.ProcessorMap();
+            Vector<int> cpm = tmp_fine_dmap.ProcessorMap();
+            cpm.insert(cpm.end(), uncovered_cpm.begin(), uncovered_cpm.end());
+            level_dm = DistributionMapping(std::move(cpm));
+
+            SetBoxArray(0, level_ba);
+            SetDistributionMap(0, level_dm);
+        } else {
+            AMREX_ASSERT(new_grids == tmp_fine_grids);
+            level_ba = new_grids;
+            level_dm = tmp_fine_dmap;
+
+            SetDistributionMap(1, level_dm);
+        }
+    } else {
+        level_ba = new_grids;
+        level_dm = new_dmap;
+    }
+    AllocLevelData(lev, level_ba, level_dm);
     InitLevelData(lev, time);
 }
 
