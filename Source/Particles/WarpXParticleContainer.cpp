@@ -347,6 +347,13 @@ WarpXParticleContainer::DepositCurrent (WarpXParIter& pti,
     const amrex::IntVect range = jx->nGrowVect() - shape_extent;
 #endif
     amrex::ignore_unused(range); // for release builds
+
+    if (amrex::numParticlesOutOfRange(pti, range) != 0) {
+        amrex::Print() << "xxxxx " << amrex::numParticlesOutOfRange(pti,range)
+                       << ", pti.tilebox() = " << pti.tilebox() << std::endl;
+        amrex::Abort("xxxxx");
+    }
+
     AMREX_ASSERT_WITH_MESSAGE(
         amrex::numParticlesOutOfRange(pti, range) == 0,
         "Particles shape does not fit within tile (CPU) or guard cells (GPU) used for current deposition");

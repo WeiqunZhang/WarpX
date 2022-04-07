@@ -12,6 +12,7 @@
 #if (defined WARPX_DIM_RZ) && (defined WARPX_USE_PSATD)
 #   include "BoundaryConditions/PML_RZ.H"
 #endif
+#include "Diagnostics/MultiDiagnostics.H"
 #include "Particles/MultiParticleContainer.H"
 #include "Parallelization/WarpXCommUtil.H"
 #include "Utils/TextMsg.H"
@@ -93,7 +94,7 @@ WarpX::MoveWindow (const int step, bool move_j)
     // Update the continuous position of the moving window,
     // and of the plasma injection
     moving_window_x += (moving_window_v - WarpX::beta_boost * PhysConst::c)/(1 - moving_window_v * WarpX::beta_boost / PhysConst::c) * dt[0];
-    int dir = moving_window_dir;
+    const int dir = moving_window_dir;
 
     // Update warpx.current_injection_position
     // PhysicalParticleContainer uses this injection position
@@ -150,7 +151,8 @@ WarpX::MoveWindow (const int step, bool move_j)
     int num_shift_crse = num_shift;
 
     // Shift the mesh fields
-    for (int lev = 0; lev <= finest_level; ++lev) {
+    int finest_moving_level = do_moving_window_on_fine_level ? finest_level : 0;
+    for (int lev = 0; lev <= finest_moving_level; ++lev) {
 
         if (lev > 0) {
             num_shift_crse = num_shift;
@@ -249,6 +251,65 @@ WarpX::MoveWindow (const int step, bool move_j)
                     shiftMF(*rho_cp[lev], geom[lev-1], num_shift_crse, dir, lev);
                 }
             }
+        }
+    }
+
+    for (int lev = finest_moving_level+1; lev <= finest_level; ++lev) {
+        num_shift_crse = num_shift;
+        num_shift *= refRatio(lev-1)[dir];
+        Box bbox = boxArray(lev).minimalBox();
+        bbox.shift(dir, -num_shift);
+        const Box dbox = Geom(lev).Domain();
+        if (dbox.contains(bbox)) {
+#ifdef AMREX_USE_EB
+            amrex::Abort("Moving window not supported with EB");
+#endif
+
+#if (defined WARPX_DIM_RZ) && (defined WARPX_USE_PSATD)
+            if (pml_rz[lev] && dim < 2) {
+                amrex::Abort("xxxxx TODO");
+            }
+#endif
+            MoveBoxArrayHelper helper;
+            helper.new_ba = boxArray(lev);
+            helper.new_ba.shift(dir, -num_shift);
+            helper.new_dm = DistributionMap(lev);
+            helper.dir = dir;
+            helper.num_shift = -num_shift;
+
+            moveBoxArray(&WarpX::shiftBoxArray, lev, helper);
+
+            SetBoxArray(lev, helper.new_ba);
+
+            if (do_pml && pml[lev]->ok()) {
+                pml[lev]->shiftBoxArray(dir, -num_shift, -num_shift_crse);
+            }
+        } else {
+            MoveBoxArrayHelper const& helper = prepareShiftAndChop(boxArray(lev),
+                                                                   DistributionMap(lev),
+                                                                   dbox, dir, -num_shift);
+
+            if (helper.new_ba.size() > 0) {
+                moveBoxArray(&WarpX::shiftAndChopBoxArray, lev, helper);
+
+                SetBoxArray(lev, helper.new_ba);
+                SetDistributionMap(lev, helper.new_dm);
+
+                if (do_pml && pml[lev]->ok()) {
+                    pml[lev]->shiftAndChopBoxArray(dir, -num_shift, -num_shift_crse);
+                }
+            } else {
+                ClearLevel(lev);
+                finest_level = lev-1;
+            }
+        }
+
+        if (lev <= finestLevel()) {
+            multi_diags->RemakeLevel(lev, boxArray(lev), DistributionMap(lev));
+            multi_diags->InitializeFieldFunctors(lev);
+        } else {
+            multi_diags->ClearLevel(lev);
+            // xxxxx todo: multi_diags->ClearFieldFunctors(lev);
         }
     }
 
@@ -522,5 +583,154 @@ WarpX::ResetProbDomain (const amrex::RealBox& rb)
         amrex::Geometry g = Geom(lev);
         g.ProbDomain(rb);
         SetGeometry(lev, g);
+    }
+}
+
+void
+WarpX::shiftBoxArray (std::unique_ptr<MultiFab>& mf, MoveBoxArrayHelper const& helper)
+{
+    if (mf == nullptr) return;
+    auto tmp_mf = std::make_unique<MultiFab>(amrex::convert(helper.new_ba, mf->ixType()),
+                                             mf->DistributionMap(),
+                                             mf->nComp(), mf->nGrowVect(),
+                                             amrex::MFInfo().SetAlloc(false));
+    for (amrex::MFIter mfi(*tmp_mf); mfi.isValid(); ++mfi) {
+        (*mf)[mfi].shift(helper.dir, helper.num_shift);
+        tmp_mf->setFab(mfi, std::move((*mf)[mfi]));
+    }
+    mf = std::move(tmp_mf);
+}
+
+void
+WarpX::shiftAndChopBoxArray (std::unique_ptr<MultiFab>& mf, MoveBoxArrayHelper const& helper)
+{
+    if (mf == nullptr) return;
+    auto tmp_mf = std::make_unique<MultiFab>(amrex::convert(helper.new_ba, mf->ixType()),
+                                             helper.new_dm, mf->nComp(), mf->nGrowVect(),
+                                             MFInfo().SetAlloc(false));
+    for (MFIter mfi(*tmp_mf); mfi.isValid(); ++mfi) {
+        FArrayBox& old_fab = (*mf)[helper.old_index[mfi.LocalIndex()]];
+        old_fab.shift(helper.dir, helper.num_shift);
+        Box const& old_bx = old_fab.box();
+        Box const& new_bx = mfi.fabbox();
+        if (old_bx == new_bx) {
+            tmp_mf->setFab(mfi, std::move(old_fab));
+        } else {
+            FArrayBox tmp_fab(new_bx, mf->nComp(), mf->arena());
+            tmp_fab.template copy<RunOn::Device>(old_fab, new_bx);
+            tmp_mf->setFab(mfi, std::move(tmp_fab));
+        }
+    }
+    mf = std::move(tmp_mf);
+}
+
+WarpX::MoveBoxArrayHelper
+WarpX::prepareShiftAndChop (BoxArray const& old_ba, DistributionMapping const& old_dm,
+                            Box const& dbox, int dir, int num_shift)
+{
+    MoveBoxArrayHelper helper;
+    helper.dir = dir;
+    helper.num_shift = num_shift;
+    BoxList bl;
+    Vector<int> procmap;
+    for (int i = 0, N = old_ba.size(); i < N; ++i) {
+        Box const bx = amrex::shift(old_ba[i], dir, num_shift) & dbox;
+        if (bx.ok()) {
+            bl.push_back(bx);
+            procmap.push_back(old_dm[i]);
+            helper.old_index.push_back(i);
+        }
+    }
+    helper.new_ba.define(std::move(bl));
+    helper.new_dm.define(std::move(procmap));
+    return helper;
+}
+
+void
+WarpX::moveBoxArray (WarpXmoveBoxArrayFP fp, int lev, MoveBoxArrayHelper const& helper)
+{
+    // TODO: (1) some multifabs only need to be rebuilt
+    //       (2) Check all WarpX members to see how they should be handled here,
+    //           in RemakeLevel (used by loadBalance) and MoveWindow.
+
+    IntVect const& rr = refRatio(lev-1);
+    MoveBoxArrayHelper chelper(helper);
+    chelper.new_ba.coarsen(rr);
+    chelper.num_shift /= rr[chelper.dir];
+
+    for (int dim = 0; dim < 3; ++dim) {
+        fp(Bfield_fp[lev][dim], helper);
+        fp(Efield_fp[lev][dim], helper);
+        fp(current_fp[lev][dim], helper);
+        fp(current_store[lev][dim], helper);
+
+        if (do_current_centering) {
+            fp(current_fp_nodal[lev][dim], helper);
+        }
+
+        if (WarpX::current_deposition_algo == CurrentDepositionAlgo::Vay)
+        {
+            fp(current_fp_vay[lev][dim], helper);
+        }
+
+        if (fft_do_time_averaging) {
+            fp(Bfield_avg_fp[lev][dim], helper);
+            fp(Efield_avg_fp[lev][dim], helper);
+        }
+
+        fp(Bfield_aux[lev][dim], helper);
+        fp(Efield_aux[lev][dim], helper);
+
+        fp(Bfield_cp[lev][dim], chelper);
+        fp(Efield_cp[lev][dim], chelper);
+        fp(current_cp[lev][dim], chelper);
+
+        if (fft_do_time_averaging) {
+            fp(Bfield_avg_fp[lev][dim], helper);
+            fp(Efield_avg_fp[lev][dim], helper);
+        }
+    }
+
+    fp(F_fp[lev], helper);
+    fp(rho_fp[lev], helper);
+    fp(phi_fp[lev], helper);
+
+    fp(F_cp[lev], chelper);
+    fp(rho_cp[lev], chelper);
+
+    for (int dim = 0; dim < 3; ++dim) {
+        fp(Bfield_cax[lev][dim], chelper);
+        fp(Efield_cax[lev][dim], chelper);
+        fp(current_buf[lev][dim], chelper);
+    }
+    fp(charge_buf[lev], chelper);
+
+    if (current_buffer_masks[lev]) {
+        current_buffer_masks[lev] = std::make_unique<iMultiFab>
+            (amrex::convert(helper.new_ba, current_buffer_masks[lev]->ixType()),
+             helper.new_dm,
+             current_buffer_masks[lev]->nComp(),
+             current_buffer_masks[lev]->nGrowVect());
+    }
+    if (gather_buffer_masks[lev]) {
+        gather_buffer_masks[lev] = std::make_unique<iMultiFab>
+            (amrex::convert(helper.new_ba, gather_buffer_masks[lev]->ixType()),
+             helper.new_dm,
+             gather_buffer_masks[lev]->nComp(),
+             gather_buffer_masks[lev]->nGrowVect());
+    }
+    if (current_buffer_masks[lev] || gather_buffer_masks[lev]) {
+        BuildBufferMasks();
+    }
+
+    if (costs[lev] != nullptr)
+    {
+        costs[lev] = std::make_unique<LayoutData<Real>>(helper.new_ba, helper.new_dm);
+        const auto iarr = costs[lev]->IndexArray();
+        for (int i : iarr)
+        {
+            (*costs[lev])[i] = 0.0;
+            setLoadBalanceEfficiency(lev, -1);
+        }
     }
 }

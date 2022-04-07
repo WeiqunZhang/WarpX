@@ -329,12 +329,18 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
             }
         }
 
+        if (lev == 1) {
+            amrex::Print() << "xxxxx in remakemultifab dm == dm? " << (dm == DistributionMap(1)) << std::endl;
+        }
+
         SetDistributionMap(lev, dm);
 
     } else
     {
         amrex::Abort("RemakeLevel: to be implemented");
     }
+
+    multi_diags->RemakeLevel(lev, ba, dm);
 
     // Re-initialize diagnostic functors that stores pointers to the user-requested fields at level, lev.
     multi_diags->InitializeFieldFunctors( lev );

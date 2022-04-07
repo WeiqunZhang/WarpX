@@ -30,11 +30,21 @@ public:
     /** \brief Called only at the last iteration. Loop over each diag and if m_dump_last_timestep
      *         is true, compute diags and flush with force_flush=true. */
     void FilterComputePackFlushLastTimestep (int step);
+    void RemakeLevel (int const lev, amrex::BoxArray const& ba,
+                      amrex::DistributionMapping const & dm) {
+        for( auto& diag : alldiags ) {
+            diag->RemakeLevel( lev, ba, dm );
+        }
+    }
+    void ClearLevel (int const lev) {
+        for (auto& diag : alldiags) { diag->ClearLevel(lev); }
+    }
     /** \brief Loop over diags in all diags and call their InitializeFieldFunctors.
                Called when a new partitioning is generated at level, lev.
       * \param[in] lev level at this the field functors are initialized.
       */
     void InitializeFieldFunctors (int lev);
+    // xxxxx void ClearFieldFunctors (int lev);
     /** Start a new iteration, i.e., dump has not been done yet. */
     void NewIteration ();
 private:

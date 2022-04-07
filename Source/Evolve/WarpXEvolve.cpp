@@ -47,6 +47,9 @@
 #include <AMReX_REAL.H>
 #include <AMReX_Utility.H>
 #include <AMReX_Vector.H>
+#ifdef AMREX_MEM_PROFILING
+#   include <AMReX_MemProfiler.H>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -79,6 +82,10 @@ WarpX::Evolve (int numsteps)
     const int step_begin = istep[0];
     for (int step = istep[0]; step < numsteps_max && cur_time < stop_time; ++step)
     {
+#ifdef AMREX_MEM_PROFILING
+        MemProfiler::report("Step-"+std::to_string(step));
+#endif
+
         WARPX_PROFILE("WarpX::Evolve::step");
         Real evolve_time_beg_step = amrex::second();
 
@@ -265,7 +272,13 @@ WarpX::Evolve (int numsteps)
         bool move_j = is_synchronized;
         // If is_synchronized we need to shift j too so that next step we can evolve E by dt/2.
         // We might need to move j because we are going to make a plotfile.
+#ifdef AMREX_MEM_PROFILING
+        MemProfiler::report("before MoveWindow");
+#endif
         int num_moved = MoveWindow(step+1, move_j);
+#ifdef AMREX_MEM_PROFILING
+        MemProfiler::report("after MoveWindow");
+#endif
 
         mypc->ContinuousFluxInjection(cur_time, dt[0]);
 
@@ -368,6 +381,10 @@ WarpX::Evolve (int numsteps)
     if (do_back_transformed_diagnostics) {
         myBFD->Flush(geom[0]);
     }
+
+#ifdef AMREX_MEM_PROFILING
+    MemProfiler::report("End of Evolve");
+#endif
 }
 
 /* /brief Perform one PIC iteration, without subcycling

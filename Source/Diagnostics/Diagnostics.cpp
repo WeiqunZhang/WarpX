@@ -422,7 +422,7 @@ Diagnostics::ComputeAndPack ()
 
     // compute the necessary fields and store result in m_mf_output.
     for (int i_buffer = 0; i_buffer < m_num_buffers; ++i_buffer) {
-        for(int lev=0; lev<nlev_output; lev++){
+        for(int lev=0; lev<=warpx.finestLevel(); lev++){
             int icomp_dst = 0;
             const auto n = static_cast<int>(m_all_field_functors[lev].size());
             for (int icomp=0; icomp<n; icomp++){
@@ -467,4 +467,25 @@ Diagnostics::FilterComputePackFlush (int step, bool force_flush)
     }
 
 
+}
+
+void
+Diagnostics::RemakeLevel (int const lev, amrex::BoxArray const& ba,
+                          amrex::DistributionMapping const & dm)
+{
+    for (int i = 0; i < m_num_buffers; ++i) {
+        amrex::MultiFab tmp(amrex::convert(ba, m_mf_output[i][lev].ixType()),
+                            dm,
+                            m_mf_output[i][lev].nComp(),
+                            m_mf_output[i][lev].nGrowVect());
+        m_mf_output[i][lev] = std::move(tmp);
+    }
+}
+
+void
+Diagnostics::ClearLevel (int const lev)
+{
+    for (int i = 0; i < m_num_buffers; ++i) {
+        m_mf_output[i].resize(lev);
+    }
 }

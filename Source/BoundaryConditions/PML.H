@@ -10,6 +10,7 @@
 #define WARPX_PML_H_
 
 #include "PML_fwd.H"
+#include "WarpX.H"
 
 #ifdef WARPX_USE_PSATD
 #   include "FieldSolver/SpectralSolver/SpectralSolver.H"
@@ -36,6 +37,10 @@ struct Sigma : amrex::Gpu::DeviceVector<amrex::Real>
 {
     int lo() const { return m_lo; }
     int hi() const { return m_hi; }
+    void shift (int num_shift) {
+        m_lo += num_shift;
+        m_hi += num_shift;
+    }
     int m_lo, m_hi;
 };
 
@@ -54,8 +59,14 @@ struct SigmaBox
     void ComputePMLFactorsB (const amrex::Real* dx, amrex::Real dt);
     void ComputePMLFactorsE (const amrex::Real* dx, amrex::Real dt);
 
+    void shift (int dir, int num_shift);
+
+    int nComp () const { return 1; }
+    amrex::Box const& box () const { return m_box; }
+
     using SigmaVect = std::array<Sigma,AMREX_SPACEDIM>;
 
+    amrex::Box m_box;
     SigmaVect sigma;
     SigmaVect sigma_cumsum;
     SigmaVect sigma_star;
@@ -111,6 +122,8 @@ public:
                   const amrex::Box& regular_domain);
     void ComputePMLFactorsB (const amrex::Real* dx, amrex::Real dt);
     void ComputePMLFactorsE (const amrex::Real* dx, amrex::Real dt);
+    void shift (const WarpX::MoveBoxArrayHelper& helper);
+    void shiftAndChop (const WarpX::MoveBoxArrayHelper& helper);
 private:
     amrex::Real dt_B = -1.e10;
     amrex::Real dt_E = -1.e10;
@@ -193,6 +206,9 @@ public:
 
     void CheckPoint (const std::string& dir) const;
     void Restart (const std::string& dir);
+
+    void shiftBoxArray (int dir, int num_shift, int num_shift_crse);
+    void shiftAndChopBoxArray (int dir, int num_shift, int num_shift_crse);
 
     static void Exchange (amrex::MultiFab& pml, amrex::MultiFab& reg, const amrex::Geometry& geom, int do_pml_in_domain);
 

@@ -17,7 +17,6 @@
 #include "Utils/WarpXAlgorithmSelection.H"
 #include "Utils/WarpXConst.H"
 #include "Utils/WarpXProfilerWrapper.H"
-#include "WarpX.H"
 #include "Parallelization/WarpXCommUtil.H"
 
 #include <AMReX.H>
@@ -140,6 +139,7 @@ namespace
 
 SigmaBox::SigmaBox (const Box& box, const BoxArray& grids, const Real* dx, const IntVect& ncell,
                     const IntVect& delta, const amrex::Box& regdomain)
+    : m_box(box)
 {
     BL_ASSERT(box.cellCentered());
 
@@ -489,6 +489,20 @@ SigmaBox::ComputePMLFactorsE (const Real* a_dx, Real dt)
     });
 }
 
+void
+SigmaBox::shift (int dir, int num_shift)
+{
+    m_box.shift(dir, num_shift);
+    sigma                [dir].shift(num_shift);
+    sigma_cumsum         [dir].shift(num_shift);
+    sigma_star           [dir].shift(num_shift);
+    sigma_star_cumsum    [dir].shift(num_shift);
+    sigma_fac            [dir].shift(num_shift);
+    sigma_cumsum_fac     [dir].shift(num_shift);
+    sigma_star_fac       [dir].shift(num_shift);
+    sigma_star_cumsum_fac[dir].shift(num_shift);
+}
+
 MultiSigmaBox::MultiSigmaBox (const BoxArray& ba, const DistributionMapping& dm,
                               const BoxArray& grid_ba, const Real* dx,
                               const IntVect& ncell, const IntVect& delta,
@@ -527,6 +541,30 @@ MultiSigmaBox::ComputePMLFactorsE (const Real* dx, Real dt)
     {
         (*this)[mfi].ComputePMLFactorsE(dx, dt);
     }
+}
+
+void
+MultiSigmaBox::shift (WarpX::MoveBoxArrayHelper const& helper)
+{
+    this->boxarray = helper.new_ba;
+    updateBDKey();
+    for (MFIter mfi(*this); mfi.isValid(); ++mfi) {
+        (*this)[mfi].shift(helper.dir, helper.num_shift);
+    }
+}
+
+void
+MultiSigmaBox::shiftAndChop (WarpX::MoveBoxArrayHelper const& helper)
+{
+    FabArray<SigmaBox> tmp_mf(helper.new_ba, helper.new_dm, 1, 0,
+                              MFInfo().SetAlloc(false), this->Factory());
+    for (MFIter mfi(tmp_mf); mfi.isValid(); ++mfi) {
+        SigmaBox& old_sb = (*this)[helper.old_index[mfi.LocalIndex()]];
+        old_sb.shift(helper.dir, helper.num_shift);
+        old_sb.m_box = mfi.fabbox();
+        tmp_mf.setFab(mfi, std::move(old_sb));
+    }
+    FabArray<SigmaBox>::operator=(std::move(tmp_mf));
 }
 
 PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& grid_dm,
@@ -1358,6 +1396,8 @@ PML::CheckPoint (const std::string& dir) const
 void
 PML::Restart (const std::string& dir)
 {
+    // xxxxx need to make sure this works with the new moving window approach
+
     if (pml_E_fp[0])
     {
         VisMF::Read(*pml_E_fp[0], dir+"_Ex_fp");
@@ -1477,3 +1517,100 @@ PushPMLPSATDSinglePatch (
     }
 }
 #endif
+
+void PML::shiftBoxArray (int dir, int num_shift, int num_shift_crse)
+{
+    WarpX::MoveBoxArrayHelper helper;
+    helper.new_ba = pml_E_fp[0]->boxArray();
+    helper.new_ba.shift(dir, num_shift);
+    helper.dir = dir;
+    helper.num_shift = num_shift;
+
+    WarpX::MoveBoxArrayHelper chelper;
+    chelper.dir = dir;
+    chelper.num_shift = num_shift_crse;
+    if (pml_E_cp[0]) {
+        chelper.new_ba = pml_E_cp[0]->boxArray();
+        chelper.new_ba.shift(dir, num_shift_crse);
+    }
+
+    for (int idim = 0; idim < 3; ++idim) {
+        WarpX::shiftBoxArray(pml_E_fp[idim], helper);
+        WarpX::shiftBoxArray(pml_B_fp[idim], helper);
+        WarpX::shiftBoxArray(pml_j_fp[idim], helper);
+        WarpX::shiftBoxArray(pml_edge_lengths[idim], helper);
+
+        WarpX::shiftBoxArray(pml_E_cp[idim], chelper);
+        WarpX::shiftBoxArray(pml_B_cp[idim], chelper);
+        WarpX::shiftBoxArray(pml_j_cp[idim], chelper);
+    }
+
+    WarpX::shiftBoxArray(pml_F_fp, helper);
+    WarpX::shiftBoxArray(pml_G_fp, helper);
+
+    WarpX::shiftBoxArray(pml_F_cp, chelper);
+    WarpX::shiftBoxArray(pml_G_cp, chelper);
+
+    sigba_fp->shift(helper);
+    if (sigba_cp) {
+        sigba_cp->shift(chelper);
+    }
+
+#if defined(AMREX_USE_EB) || defined(WARPX_USE_PSATD)
+    amrex::Abort("PML::shiftBoxArray not support for EB and PSATD");
+#endif
+}
+
+void PML::shiftAndChopBoxArray (int dir, int num_shift, int num_shift_crse)
+{
+    BoxArray const& old_ba = amrex::convert(pml_E_fp[0]->boxArray(), IntVect(0));
+    DistributionMapping const& old_dm = pml_E_fp[0]->DistributionMap();
+    Box dbox = old_ba.minimalBox();
+    if (num_shift > 0) {
+        dbox.setBig(dir, m_geom->Domain().bigEnd(dir));
+    } else {
+        dbox.setSmall(dir, 0);
+    }
+    WarpX::MoveBoxArrayHelper helper = WarpX::prepareShiftAndChop
+        (old_ba, old_dm, dbox, dir, num_shift);
+
+    WarpX::MoveBoxArrayHelper chelper;
+    if (pml_E_cp[0]) {
+        BoxArray const& old_cba = amrex::convert(pml_E_cp[0]->boxArray(), IntVect(0));
+        DistributionMapping const& old_cdm = pml_E_cp[0]->DistributionMap();
+        Box dbox_crse = old_cba.minimalBox();
+        if (num_shift_crse > 0) {
+            dbox_crse.setBig(dir, m_cgeom->Domain().bigEnd(dir));
+        } else {
+            dbox_crse.setSmall(dir, 0);
+        }
+        chelper = WarpX::prepareShiftAndChop(old_cba, old_cdm, dbox_crse,
+                                             dir, num_shift_crse);
+    }
+
+    for (int idim = 0; idim < 3; ++idim) {
+        WarpX::shiftAndChopBoxArray(pml_E_fp[idim], helper);
+        WarpX::shiftAndChopBoxArray(pml_B_fp[idim], helper);
+        WarpX::shiftAndChopBoxArray(pml_j_fp[idim], helper);
+        WarpX::shiftAndChopBoxArray(pml_edge_lengths[idim], helper);
+
+        WarpX::shiftAndChopBoxArray(pml_E_cp[idim], chelper);
+        WarpX::shiftAndChopBoxArray(pml_B_cp[idim], chelper);
+        WarpX::shiftAndChopBoxArray(pml_j_cp[idim], chelper);
+    }
+
+    WarpX::shiftAndChopBoxArray(pml_F_fp, helper);
+    WarpX::shiftAndChopBoxArray(pml_G_fp, helper);
+
+    WarpX::shiftAndChopBoxArray(pml_F_cp, chelper);
+    WarpX::shiftAndChopBoxArray(pml_G_cp, chelper);
+
+    sigba_fp->shiftAndChop(helper);
+    if (sigba_cp) {
+        sigba_cp->shiftAndChop(chelper);
+    }
+
+#if defined(AMREX_USE_EB) || defined(WARPX_USE_PSATD)
+    amrex::Abort("PML::shiftAndChopBoxArray not support for EB and PSATD");
+#endif
+}

@@ -85,6 +85,9 @@ public:
      * \return bool, whether to flush
      */
     virtual bool DoDump (int step, int i_buffer, bool force_flush=false) = 0;
+    void RemakeLevel (int const lev, amrex::BoxArray const& ba,
+                      amrex::DistributionMapping const & dm);
+    void ClearLevel (int const lev);
     /** Start a new iteration, i.e., dump has not been done yet. */
     void NewIteration () {m_already_done = false;}
     /** Perform necessary operations with user-defined diagnostic parameters

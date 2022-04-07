@@ -46,6 +46,18 @@ MultiDiagnostics::InitializeFieldFunctors ( int lev )
     }
 }
 
+#if 0
+// xxxxx
+void
+MultiDiagnostics::ClearFieldFunctors ( int lev )
+{
+    for( auto& diag : alldiags ){
+        // Initialize functors to store pointers to fields.
+        diag->ClearFieldFunctors( lev );
+    }
+}
+#endif
+
 void
 MultiDiagnostics::ReadParameters ()
 {

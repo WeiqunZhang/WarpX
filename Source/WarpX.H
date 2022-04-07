@@ -758,6 +758,7 @@ public:
     static int self_fields_verbosity;
 
     static int do_moving_window; // boolean
+    static int do_moving_window_on_fine_level;
     static int start_moving_window_step; // the first step to move window
     static int end_moving_window_step; // the last step to move window
     /** Returns true if the moving window is active for the provided step
@@ -773,6 +774,27 @@ public:
     static int moving_window_dir;
     static amrex::Real moving_window_v;
     static bool fft_do_time_averaging;
+
+    // Used by moving window to shift BoxArray while keeping the data
+    struct MoveBoxArrayHelper {
+        amrex::BoxArray new_ba;
+        amrex::DistributionMapping new_dm;
+        amrex::Vector<int> old_index;
+        int dir = -1;
+        int num_shift = 0;
+    };
+
+    static void shiftBoxArray (std::unique_ptr<amrex::MultiFab>& mf,
+                               MoveBoxArrayHelper const& helper);
+    static void shiftAndChopBoxArray (std::unique_ptr<amrex::MultiFab>& mf,
+                                      MoveBoxArrayHelper const& helper);
+    static MoveBoxArrayHelper prepareShiftAndChop (amrex::BoxArray const& old_ba,
+                                                   amrex::DistributionMapping const& old_dm,
+                                                   amrex::Box const& dbox,
+                                                   int dir, int num_shift);
+    typedef void (*WarpXmoveBoxArrayFP)(std::unique_ptr<amrex::MultiFab>&,
+                                        MoveBoxArrayHelper const&);
+    void moveBoxArray (WarpXmoveBoxArrayFP fp, int lev, MoveBoxArrayHelper const& helper);
 
     // slice generation //
     static int num_slice_snapshots_lab;
