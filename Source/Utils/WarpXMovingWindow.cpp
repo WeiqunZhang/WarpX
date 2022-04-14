@@ -290,6 +290,12 @@ WarpX::MoveWindow (const int step, bool move_j)
                                                                    dbox, dir, -num_shift);
 
             if (helper.new_ba.size() > 0) {
+                static bool first_time = true;
+                if (first_time) {
+                    amrex::Print() << Utils::TextMsg::Info("Fine patch starts moving out of the domain");
+                    first_time = false;
+                }
+
                 moveBoxArray(&WarpX::shiftAndChopBoxArray, lev, helper);
 
                 SetBoxArray(lev, helper.new_ba);
@@ -299,6 +305,11 @@ WarpX::MoveWindow (const int step, bool move_j)
                     pml[lev]->shiftAndChopBoxArray(dir, -num_shift, -num_shift_crse);
                 }
             } else {
+                static bool first_time = true;
+                if (first_time) {
+                    amrex::Print() << Utils::TextMsg::Info("Fine patch is gone");
+                    first_time = false;
+                }
                 ClearLevel(lev);
                 finest_level = lev-1;
             }
