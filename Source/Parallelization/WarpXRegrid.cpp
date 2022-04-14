@@ -329,10 +329,6 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
             }
         }
 
-        if (lev == 1) {
-            amrex::Print() << "xxxxx in remakemultifab dm == dm? " << (dm == DistributionMap(1)) << std::endl;
-        }
-
         SetDistributionMap(lev, dm);
 
     } else

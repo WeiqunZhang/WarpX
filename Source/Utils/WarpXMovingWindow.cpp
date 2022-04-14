@@ -638,7 +638,9 @@ WarpX::prepareShiftAndChop (BoxArray const& old_ba, DistributionMapping const& o
         if (bx.ok()) {
             bl.push_back(bx);
             procmap.push_back(old_dm[i]);
-            helper.old_index.push_back(i);
+            if (old_dm[i] == ParallelDescriptor::MyProc()) {
+                helper.old_index.push_back(i);
+            }
         }
     }
     helper.new_ba.define(std::move(bl));
