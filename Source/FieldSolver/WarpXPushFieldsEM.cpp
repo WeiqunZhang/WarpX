@@ -499,97 +499,216 @@ void WarpX::PSATDSubtractCurrentPartialSumsAvg ()
         amrex::MultiFab& Jx = *current_fp[lev][0];
         amrex::MultiFab& Jy = *current_fp[lev][1];
         amrex::MultiFab& Jz = *current_fp[lev][2];
-        amrex::MultiFab const& Dx_cumsum = *current_fp_cumsum[lev][0];
-        amrex::MultiFab const& Dy_cumsum = *current_fp_cumsum[lev][1];
-        amrex::MultiFab const& Dz_cumsum = *current_fp_cumsum[lev][2];
-
-#if defined (WARPX_DIM_XZ)
-        amrex::ignore_unused(Jy, Dy_cumsum);
-#endif
+        amrex::MultiFab const& Dx = *current_fp_vay[lev][0];
+        amrex::MultiFab const& Dy = *current_fp_vay[lev][1];
+        amrex::MultiFab const& Dz = *current_fp_vay[lev][2];
 
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
-
-        // Subtract average of cumulative sum from Jx
         for (amrex::MFIter mfi(Jx); mfi.isValid(); ++mfi)
         {
-            const amrex::Box& bx = mfi.fabbox();
+            auto const& Dxa = Dx.const_array(mfi);
+            auto const& Dya = Dy.const_array(mfi);
+            auto const& Dza = Dz.const_array(mfi);
+            auto const& Jxa = Jx.array(mfi);
+            auto const& Jya = Jy.array(mfi);
+            auto const& Jza = Jz.array(mfi);
+            const amrex::Box& xbox = Jx[mfi].box();
+            const amrex::Box& ybox = Jy[mfi].box();
+            const amrex::Box& zbox = Jz[mfi].box();
+            const amrex::Real facx = dx[0] / static_cast<amrex::Real>(xbox.length(0));
+            const amrex::Real facy = dx[1] / static_cast<amrex::Real>(ybox.length(1));
+            const amrex::Real facz = dx[2] / static_cast<amrex::Real>(zbox.length(2));
 
-            amrex::Array4<amrex::Real> const& Jx_arr = Jx.array(mfi);
-            amrex::Array4<amrex::Real const> const& Dx_cumsum_arr = Dx_cumsum.const_array(mfi);
-
-            const amrex::Dim3 lo = amrex::lbound(bx);
-            const amrex::Dim3 hi = amrex::ubound(bx);
-            const int nx = hi.x - lo.x + 1;
-
-            // Subtract average of cumulative sum along x only
-            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+#ifdef AMREX_USE_GPU
+            const int ndx = xbox.length(1) * xbox.length(2);
+            const int ndy = ybox.length(0) * ybox.length(2);
+            const int ndz = zbox.length(0) * zbox.length(1);
+            constexpr int nthreads = 128;
+            const int nblocks = std::max({ndx,ndy,ndz}); // one block per line
+#ifdef AMREX_USE_DPCPP
+            constexpr std::size_t shared_mem_byte = sizeof(amrex::Real)*amrex::Gpu::Device::warp_size;
+            amrex::launch(nblocks, nthreads, shared_mem_byte, amrex::Gpu::gpuStream(),
+                          [=] AMREX_GPU_DEVICE (amrex::Gpu::Handler const& h)
+#else
+            amrex::launch(nblocks, nthreads, amrex::Gpu::gpuStream(),
+                          [=] AMREX_GPU_DEVICE ()
+#endif
             {
-                for (int ii = lo.x; ii <= hi.x; ++ii)
+                // Each line in x-direction is assigned to a block
+#ifdef AMREX_USE_DPCPP
+                int k = h.blockIdx() / xbox.length(1);
+                int j = h.blockIdx() - k * xbox.length(1);
+#else
+                int k = blockIdx.x / xbox.length(1);
+                int j = blockIdx.x - k * xbox.length(1);
+#endif
+                int i;
+                if (k < xbox.length(2))
                 {
-                    Jx_arr(i,j,k) -= Dx_cumsum_arr(ii,j,k) * dx[0] / static_cast<amrex::Real>(nx);
+                    j += xbox.smallEnd(1);
+                    k += xbox.smallEnd(2);
+                    amrex::Real tmp = amrex::Real(0.);
+                    const int nx = xbox.length(0);
+                    const int xlo = xbox.smallEnd(0);
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < nx; icell += stride)
+                    {
+                        i = icell + xlo;
+                        tmp += static_cast<amrex::Real>(nx-icell)*Dxa(i,j,k);
+                    }
+
+#ifdef AMREX_USE_DPCPP
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp, h);
+                    amrex::Real& psa = *((amrex::Real*)h.sharedMemory());
+                    if (h.threadIdx() == 0) {
+                        psa = r0;
+                    }
+                    h.sharedBarrier();
+#else
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp);
+                    // Only thread 0 has valid r0, and it needs to broadcast
+                    // to the whole block.
+                    __shared__ amrex::Real psa;
+                    if (threadIdx.x == 0) {
+                        psa = r0;
+                    }
+                    __syncthreads();
+#endif
+                    psa *= facx;
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < nx; icell += stride)
+                    {
+                        i = icell + xlo;
+                        Jxa(i,j,k) -= psa;
+                    }
+                }
+
+                // y-direction
+#ifdef AMREX_USE_DPCPP
+                k = h.blockIdx() / ybox.length(0);
+                i = h.blockIdx() - k * ybox.length(0);
+#else
+                k = blockIdx.x / ybox.length(0);
+                i = blockIdx.x - k * ybox.length(0);
+#endif
+                if (k < ybox.length(2))
+                {
+                    i += ybox.smallEnd(0);
+                    k += ybox.smallEnd(2);
+                    amrex::Real tmp = amrex::Real(0.);
+                    const int ny = ybox.length(1);
+                    const int ylo = ybox.smallEnd(1);
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < ny; icell += stride)
+                    {
+                        j = icell + ylo;
+                        tmp += static_cast<amrex::Real>(ny-icell)*Dya(i,j,k);
+                    }
+
+#ifdef AMREX_USE_DPCPP
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp, h);
+                    amrex::Real& psa = *((amrex::Real*)h.sharedMemory());
+                    if (h.threadIdx() == 0) {
+                        psa = r0;
+                    }
+                    h.sharedBarrier();
+#else
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp);
+                    // Only thread 0 has valid r0, and it needs to broadcast
+                    // to the whole block.
+                    __shared__ amrex::Real psa;
+                    if (threadIdx.x == 0) {
+                        psa = r0;
+                    }
+                    __syncthreads();
+#endif
+                    psa *= facy;
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < ny; icell += stride)
+                    {
+                        int i = icell + ylo;
+                        Jya(i,j,k) -= psa;
+                    }
+                }
+
+                // z-direction
+#ifdef AMREX_USE_DPCPP
+                j = h.blockIdx() / zbox.length(0);
+                i = h.blockIdx() - j * zbox.length(0);
+#else
+                j = blockIdx.x / zbox.length(0);
+                i = blockIdx.x - j * zbox.length(0);
+#endif
+                if (j < zbox.length(1))
+                {
+                    i += zbox.smallEnd(0);
+                    j += zbox.smallEnd(1);
+                    amrex::Real tmp = amrex::Real(0.);
+                    const int nz = zbox.length(2);
+                    const int zlo = zbox.smallEnd(2);
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < nz; icell += stride)
+                    {
+                        k = icell + zlo;
+                        tmp += static_cast<amrex::Real>(nz-icell)*Dza(i,j,k);
+                    }
+
+#ifdef AMREX_USE_DPCPP
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp, h);
+                    amrex::Real& psa = *((amrex::Real*)h.sharedMemory());
+                    if (h.threadIdx() == 0) {
+                        psa = r0;
+                    }
+                    h.sharedBarrier();
+#else
+                    amrex::Real r0 = amrex::Gpu::blockReduceSum(tmp);
+                    // Only thread 0 has valid r0, and it needs to broadcast
+                    // to the whole block.
+                    __shared__ amrex::Real psa;
+                    if (threadIdx.x == 0) {
+                        psa = r0;
+                    }
+                    __syncthreads();
+#endif
+                    psa *= facy;
+#ifdef AMREX_USE_DPCPP
+                    for (int icell = h.threadIdx()
+#else
+                    for (int icell = threadIdx.x,
+#endif
+                             stride = nthreads; icell < nz; icell += stride)
+                    {
+                        int i = icell + zlo;
+                        Jza(i,j,k) -= psa;
+                    }
                 }
             });
-        }
 
-#if defined (WARPX_DIM_3D)
-        // Subtract average of cumulative sum from Jy
-        for (amrex::MFIter mfi(Jy); mfi.isValid(); ++mfi)
-        {
-            const amrex::Box& bx = mfi.fabbox();
-
-            amrex::Array4<amrex::Real> const& Jy_arr = Jy.array(mfi);
-            amrex::Array4<amrex::Real const> const& Dy_cumsum_arr = Dy_cumsum.const_array(mfi);
-
-            const amrex::Dim3 lo = amrex::lbound(bx);
-            const amrex::Dim3 hi = amrex::ubound(bx);
-            const int ny = hi.y - lo.y + 1;
-
-            // Subtract average of cumulative sum along y only
-            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-                for (int jj = lo.y; jj <= hi.y; ++jj)
-                {
-                    Jy_arr(i,j,k) -= Dy_cumsum_arr(i,jj,k) * dx[1] / static_cast<amrex::Real>(ny);
-                }
-            });
-        }
+#else
+            amrex::Abort("CPU todo");
 #endif
-
-        // Subtract average of cumulative sum from Jz
-        for (amrex::MFIter mfi(Jz); mfi.isValid(); ++mfi)
-        {
-            const amrex::Box& bx = mfi.fabbox();
-
-            amrex::Array4<amrex::Real> const& Jz_arr = Jz.array(mfi);
-            amrex::Array4<amrex::Real const> const& Dz_cumsum_arr = Dz_cumsum.const_array(mfi);
-
-            const amrex::Dim3 lo = amrex::lbound(bx);
-            const amrex::Dim3 hi = amrex::ubound(bx);
-#if defined (WARPX_DIM_XZ)
-            const int nz = hi.y - lo.y + 1;
-#elif defined (WARPX_DIM_3D)
-            const int nz = hi.z - lo.z + 1;
-#endif
-
-            // Subtract average of cumulative sum along z only
-            amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-            {
-#if defined (WARPX_DIM_XZ)
-                // z direction is in the second component
-                for (int jj = lo.y; jj <= hi.y; ++jj)
-                {
-                    Jz_arr(i,j,k) -= Dz_cumsum_arr(i,jj,k) * dx[2] / static_cast<amrex::Real>(nz);
-                }
-#elif defined (WARPX_DIM_3D)
-                // z direction is in the third component
-                for (int kk = lo.z; kk <= hi.z; ++kk)
-                {
-                    Jz_arr(i,j,k) -= Dz_cumsum_arr(i,j,kk) * dx[2] / static_cast<amrex::Real>(nz);
-                }
-#endif
-            });
         }
     }
 #endif
