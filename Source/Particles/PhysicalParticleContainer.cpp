@@ -2820,7 +2820,22 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
 
     const auto t_do_not_gather = do_not_gather;
 
-    amrex::ParallelFor( np_to_push, [=] AMREX_GPU_DEVICE (long ip)
+    enum exteb_flags : int { no_exteb, has_exteb };
+    enum qed_flags : int { no_qed, has_qed };
+
+    int exteb_runtime_flag = getExternalEB.isNoOp() ? no_exteb : has_exteb;
+#ifdef WARPX_QED
+    int qed_runtime_flag = (local_has_quantum_sync || do_sync) ? has_qed : no_qed;
+#else
+    int qed_runtime_flag = no_qed;
+#endif
+
+    // Using this version of ParallelFor with compile time options could
+    // improve performance when qed or external EB is not used by reducing
+    // register pressure.
+    amrex::ParallelFor( np_to_push,
+                        [=] AMREX_GPU_DEVICE (long ip, auto exteb_control,
+                                              auto qed_control)
     {
         amrex::ParticleReal xp, yp, zp;
         getPosition(ip, xp, yp, zp);
@@ -2846,31 +2861,57 @@ PhysicalParticleContainer::PushPX (WarpXParIter& pti,
                            dx_arr, xyzmin_arr, lo, n_rz_azimuthal_modes,
                            nox, galerkin_interpolation);
         }
-        // Externally applied E and B-field in Cartesian co-ordinates
-        getExternalEB(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
+
+        auto const& foo_geeb = getExternalEB; // Have to do this for nvcc
+        if constexpr (exteb_control == has_exteb) {
+            foo_geeb(ip, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
+        }
 
         scaleFields(xp, yp, zp, Exp, Eyp, Ezp, Bxp, Byp, Bzp);
 
-        doParticlePush(getPosition, setPosition, copyAttribs, ip,
-                       ux[ip], uy[ip], uz[ip],
-                       Exp, Eyp, Ezp, Bxp, Byp, Bzp,
-                       ion_lev ? ion_lev[ip] : 0,
-                       m, q, pusher_algo, do_crr, do_copy,
 #ifdef WARPX_QED
-                       do_sync,
-                       t_chi_max,
+        if (!do_sync)
 #endif
-                       dt);
-
+        {
+            doParticlePush<0>(getPosition, setPosition, copyAttribs, ip,
+                              ux[ip], uy[ip], uz[ip],
+                              Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                              ion_lev ? ion_lev[ip] : 0,
+                              m, q, pusher_algo, do_crr, do_copy,
 #ifdef WARPX_QED
-        if (local_has_quantum_sync) {
-            evolve_opt(ux[ip], uy[ip], uz[ip],
-                       Exp, Eyp, Ezp,Bxp, Byp, Bzp,
-                       dt, p_optical_depth_QSR[ip]);
+                              t_chi_max,
+#endif
+                              dt);
+        }
+#ifdef WARPX_QED
+        else {
+            if constexpr (qed_control == has_qed) {
+                doParticlePush<1>(getPosition, setPosition, copyAttribs, ip,
+                                  ux[ip], uy[ip], uz[ip],
+                                  Exp, Eyp, Ezp, Bxp, Byp, Bzp,
+                                  ion_lev ? ion_lev[ip] : 0,
+                                  m, q, pusher_algo, do_crr, do_copy,
+                                  t_chi_max,
+                                  dt);
+            }
         }
 #endif
 
-    });
+#ifdef WARPX_QED
+        auto foo_local_has_quantum_sync = local_has_quantum_sync; // for nvcc
+        auto foo_podq = p_optical_depth_QSR;
+        auto& foo_eopt = evolve_opt;
+        if constexpr (qed_control == has_qed) {
+            if (foo_local_has_quantum_sync) {
+                foo_eopt(ux[ip], uy[ip], uz[ip],
+                       Exp, Eyp, Ezp,Bxp, Byp, Bzp,
+                       dt, foo_podq[ip]);
+            }
+        }
+#endif
+    }, TypeList<CompileTimeOptions<no_exteb,has_exteb>,
+                CompileTimeOptions<no_qed  ,has_qed>>{},
+       {exteb_runtime_flag, qed_runtime_flag});
 }
 
 void
