@@ -1403,6 +1403,7 @@ MultiParticleContainer::doQEDSchwinger ()
 
         const auto Transform = SchwingerTransformFunc{m_qed_schwinger_y_size, PIdx::w};
 
+
         const auto num_added = filterCreateTransformFromFAB<1>( dst_ele_tile,
                                dst_pos_tile, box, fieldsEB, np_ele_dst,
                                np_pos_dst,Filter, CreateEle, CreatePos,
@@ -1554,6 +1555,7 @@ void MultiParticleContainer::doQedBreitWheeler (int lev,
 
             const auto np_dst_ele = dst_ele_tile.numParticles();
             const auto np_dst_pos = dst_pos_tile.numParticles();
+
             const auto num_added = filterCopyTransformParticles<1>(
                                                       dst_ele_tile, dst_pos_tile,
                                                       src_tile, np_dst_ele, np_dst_pos,

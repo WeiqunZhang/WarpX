@@ -207,7 +207,7 @@ void ParticleBoundaryBuffer::gatherParticles (MultiParticleContainer& mypc,
 {
     WARPX_PROFILE("ParticleBoundaryBuffer::gatherParticles");
 
-    using PIter = amrex::ParConstIter<0,0,PIdx::nattribs>;
+    using PIter = amrex::ParConstIterSoA<PIdx::nattribs, 0>;
     const auto& warpx_instance = WarpX::GetInstance();
     const amrex::Geometry& geom = warpx_instance.Geom(0);
     auto plo = geom.ProbLoArray();

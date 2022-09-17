@@ -72,13 +72,13 @@
 using namespace amrex;
 
 WarpXParIter::WarpXParIter (ContainerType& pc, int level)
-    : amrex::ParIter<0,0,PIdx::nattribs>(pc, level,
+    : amrex::ParIterSoA<PIdx::nattribs, 0>(pc, level,
              MFItInfo().SetDynamic(WarpX::do_dynamic_scheduling))
 {
 }
 
 WarpXParIter::WarpXParIter (ContainerType& pc, int level, MFItInfo& info)
-    : amrex::ParIter<0,0,PIdx::nattribs>(pc, level,
+    : amrex::ParIterSoA<PIdx::nattribs, 0>(pc, level,
                    info.SetDynamic(WarpX::do_dynamic_scheduling))
 {
 }
@@ -181,9 +181,7 @@ WarpXParticleContainer::AddNParticles (int /*lev*/,
     // Redistribute() will move them to proper places.
     auto& particle_tile = DefineAndReturnParticleTile(0, 0, 0);
 
-    using PinnedTile = amrex::ParticleTile<Particle<NStructReal, NStructInt>,
-                                           NArrayReal, NArrayInt,
-                                           amrex::PinnedArenaAllocator>;
+    using PinnedTile = typename ContainerLike<amrex::PinnedArenaAllocator>::ParticleTileType;
     PinnedTile pinned_tile;
     pinned_tile.define(NumRuntimeRealComps(), NumRuntimeIntComps());
 
@@ -193,45 +191,46 @@ WarpXParticleContainer::AddNParticles (int /*lev*/,
     amrex::Vector<amrex::ParticleReal> weight(np);
 
 #ifdef WARPX_DIM_RZ
+    amrex::Vector<amrex::ParticleReal> r(np);
     amrex::Vector<amrex::ParticleReal> theta(np);
 #endif
 
     for (int i = ibegin; i < iend; ++i)
     {
-        ParticleType p;
-        if (id==-1)
-        {
-            p.id() = ParticleType::NextID();
+        if (id==-1) {
+            pinned_tile.push_back_int(PIdxInt::id, ParticleType::NextID());
         } else {
-            p.id() = id;
+            pinned_tile.push_back_int(PIdxInt::id, id);
         }
-        p.cpu() = amrex::ParallelDescriptor::MyProc();
-#if defined(WARPX_DIM_3D)
-        p.pos(0) = x[i];
-        p.pos(1) = y[i];
-        p.pos(2) = z[i];
-#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-        amrex::ignore_unused(y);
+        pinned_tile.push_back_int(PIdxInt::cpu, amrex::ParallelDescriptor::MyProc());
+
 #ifdef WARPX_DIM_RZ
+        r[i-ibegin] = std::sqrt(x[i]*x[i] + y[i]*y[i]);
         theta[i-ibegin] = std::atan2(y[i], x[i]);
-        p.pos(0) = std::sqrt(x[i]*x[i] + y[i]*y[i]);
-#else
-        p.pos(0) = x[i];
 #endif
-        p.pos(1) = z[i];
-#else //AMREX_SPACEDIM == 1
-        amrex::ignore_unused(x,y);
-        p.pos(0) = z[i];
-#endif
-
-        pinned_tile.push_back(p);
-
         // grab weight from the attr array
         weight[i-ibegin] = attr_real[i*nattr_real];
     }
 
     if (np > 0)
     {
+#if defined(WARPX_DIM_3D)
+        pinned_tile.push_back_real(PIdx::x, x + ibegin, x + iend);
+        pinned_tile.push_back_real(PIdx::y, y + ibegin, y + iend);
+        pinned_tile.push_back_real(PIdx::z, z + ibegin, z + iend);
+#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
+        amrex::ignore_unused(y);
+#ifdef WARPX_DIM_RZ
+        pinned_tile.push_back_real(PIdx::x, r.data(), r.data() + np);
+#else
+        pinned_tile.push_back_real(PIdx::x, x + ibegin, x + iend);
+#endif
+        pinned_tile.push_back_real(PIdx::z, z + ibegin, z + iend);
+#else //AMREX_SPACEDIM == 1
+        amrex::ignore_unused(x,y);
+        pinned_tile.push_back_real(PIdx::z, z + ibegin, z + iend);
+#endif
+
         pinned_tile.push_back_real(PIdx::w , weight.data(), weight.data() + np);
         pinned_tile.push_back_real(PIdx::ux,     ux + ibegin,     ux + iend);
         pinned_tile.push_back_real(PIdx::uy,     uy + ibegin,     uy + iend);
@@ -1342,7 +1341,7 @@ void WarpXParticleContainer::defineAllParticleTiles () noexcept
 
 // This function is called in Redistribute, just after locate
 void
-WarpXParticleContainer::particlePostLocate(ParticleType& p,
+WarpXParticleContainer::particlePostLocate(ParticleType& p, // TODO
                                            const ParticleLocData& pld,
                                            const int lev)
 {
@@ -1354,7 +1353,8 @@ WarpXParticleContainer::particlePostLocate(ParticleType& p,
         and p.id() != NoSplitParticleID
         and p.id() >= 0)
     {
-        p.id() = DoSplitParticleID;
+        // warning: overflow in conversion from 'long int' to 'int' changes value from '549755813884' to '-4' [-Woverflow]
+        p.id() = DoSplitParticleID; // TODO
     }
 
     if (pld.m_lev == lev-1){

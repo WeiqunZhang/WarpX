@@ -60,12 +60,12 @@ void setNewParticleIDs (PTile& ptile, int old_size, int num_added)
     }
 
     const int cpuid = amrex::ParallelDescriptor::MyProc();
-    auto pp = ptile.GetArrayOfStructs()().data() + old_size;
+    auto ptd = ptile.getParticleTileData();
     amrex::ParallelFor(num_added, [=] AMREX_GPU_DEVICE (int ip) noexcept
     {
-        auto& p = pp[ip];
-        p.id() = pid+ip;
-        p.cpu() = cpuid;
+        auto const new_id = ip + old_size;
+        ptd.m_idata[0][new_id] = pid+ip;
+        ptd.m_idata[1][new_id] = cpuid;  // TODO double check me
     });
 }
 

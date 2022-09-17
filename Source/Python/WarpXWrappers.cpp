@@ -452,27 +452,6 @@ namespace
         return getFieldNodalFlagData(pml->GetG_fp());
     }
 
-    amrex::ParticleReal** warpx_getParticleStructs(
-            const char* char_species_name, int lev,
-            int* num_tiles, int** particles_per_tile) {
-        const auto & mypc = WarpX::GetInstance().GetPartContainer();
-        const std::string species_name(char_species_name);
-        auto & myspc = mypc.GetParticleContainerFromName(species_name);
-
-        *num_tiles = myspc.numLocalTilesAtLevel(lev);
-        *particles_per_tile = static_cast<int*>(malloc(*num_tiles*sizeof(int)));
-        memset(*particles_per_tile, 0, *num_tiles*sizeof(int));
-
-        auto data = static_cast<amrex::ParticleReal**>(malloc(*num_tiles*sizeof(typename WarpXParticleContainer::ParticleType*)));
-        int i = 0;
-        for (WarpXParIter pti(myspc, lev); pti.isValid(); ++pti, ++i) {
-            auto& aos = pti.GetArrayOfStructs();
-            data[i] = (amrex::ParticleReal*) aos.data();
-            (*particles_per_tile)[i] = pti.numParticles();
-        }
-        return data;
-    }
-
     amrex::ParticleReal** warpx_getParticleArrays (
             const char* char_species_name, const char* char_comp_name,
             int lev, int* num_tiles, int** particles_per_tile ) {
@@ -590,7 +569,7 @@ namespace
 
         auto data = static_cast<int**>(malloc(*num_tiles*sizeof(int*)));
         int i = 0;
-        for (amrex::ParIter<0,0,PIdx::nattribs, 0, amrex::PinnedArenaAllocator> pti(particle_buffer, lev); pti.isValid(); ++pti, ++i) {
+        for (amrex::ParIterSoA<PIdx::nattribs, 0, amrex::PinnedArenaAllocator> pti(particle_buffer, lev); pti.isValid(); ++pti, ++i) {
             auto& soa = pti.GetStructOfArrays();
             data[i] = (int*) soa.GetIntData(comp).dataPtr();
             (*particles_per_tile)[i] = pti.numParticles();
@@ -614,33 +593,12 @@ namespace
 
         auto data = static_cast<amrex::ParticleReal**>(malloc(*num_tiles*sizeof(amrex::ParticleReal*)));
         int i = 0;
-        for (amrex::ParIter<0,0,PIdx::nattribs, 0, amrex::PinnedArenaAllocator> pti(particle_buffer, lev); pti.isValid(); ++pti, ++i) {
+        for (amrex::ParIterSoA<PIdx::nattribs, 0, amrex::PinnedArenaAllocator> pti(particle_buffer, lev); pti.isValid(); ++pti, ++i) {
             auto& soa = pti.GetStructOfArrays();
             data[i] = (amrex::ParticleReal*) soa.GetRealData(comp).dataPtr();
             (*particles_per_tile)[i] = pti.numParticles();
         }
 
-        return data;
-    }
-
-    amrex::ParticleReal** warpx_getParticleBoundaryBufferStructs(const char* species_name, int boundary, int lev,
-                     int* num_tiles, int** particles_per_tile)
-    {
-        const std::string name(species_name);
-        auto& particle_buffers = WarpX::GetInstance().GetParticleBoundaryBuffer();
-        auto& particle_buffer = particle_buffers.getParticleBuffer(species_name, boundary);
-
-        *num_tiles = particle_buffer.numLocalTilesAtLevel(lev);
-        *particles_per_tile = static_cast<int*>(malloc(*num_tiles*sizeof(int)));
-        memset(*particles_per_tile, 0, *num_tiles*sizeof(int));
-
-        auto data = static_cast<amrex::ParticleReal**>(malloc(*num_tiles*sizeof(typename WarpXParticleContainer::ParticleType*)));
-        int i = 0;
-        for (amrex::ParIter<0,0,PIdx::nattribs, 0, amrex::PinnedArenaAllocator> pti(particle_buffer, lev); pti.isValid(); ++pti, ++i) {
-            auto& aos = pti.GetArrayOfStructs();
-            data[i] = (amrex::ParticleReal*) aos.data();
-            (*particles_per_tile)[i] = pti.numParticles();
-        }
         return data;
     }
 

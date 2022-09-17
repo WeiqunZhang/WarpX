@@ -47,32 +47,32 @@ struct SmartCreate
         const int id = 0) const noexcept
     {
 #if defined(WARPX_DIM_3D)
-        prt.m_aos[i_prt].pos(0) = x;
-        prt.m_aos[i_prt].pos(1) = y;
-        prt.m_aos[i_prt].pos(2) = z;
+        prt.m_rdata[0][i_prt] = x;
+        prt.m_rdata[1][i_prt] = y;
+        prt.m_rdata[2][i_prt] = z;
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-        prt.m_aos[i_prt].pos(0) = x;
-        prt.m_aos[i_prt].pos(1) = z;
+        prt.m_rdata[0][i_prt] = x;
+        prt.m_rdata[1][i_prt] = z;
         amrex::ignore_unused(y);
 #else
-        prt.m_aos[i_prt].pos(0) = z;
+        prt.m_rdata[0][i_prt] = z;
         amrex::ignore_unused(x,y);
 #endif
 
-        prt.m_aos[i_prt].cpu() = cpu;
-        prt.m_aos[i_prt].id() = id;
+        prt.m_idata[0][i_prt] = id;
+        prt.m_idata[1][i_prt] = cpu; // TODO double check me
 
-         // initialize the real components
-         for (int j = 0; j < PartData::NAR; ++j)
-             prt.m_rdata[j][i_prt] = initializeRealValue(m_policy_real[j], engine);
-         for (int j = 0; j < prt.m_num_runtime_real; ++j)
-             prt.m_runtime_rdata[j][i_prt] = initializeRealValue(m_policy_real[j+PartData::NAR], engine);
+        // initialize the real components after position
+        for (int j = AMREX_SPACEDIM; j < PartData::NAR; ++j)
+            prt.m_rdata[j][i_prt] = initializeRealValue(m_policy_real[j], engine);
+        for (int j = 0; j < prt.m_num_runtime_real; ++j)
+            prt.m_runtime_rdata[j][i_prt] = initializeRealValue(m_policy_real[j+PartData::NAR], engine);
 
-         // initialize the int components
-         for (int j = 0; j < PartData::NAI; ++j)
-             prt.m_idata[j][i_prt] = initializeIntValue(m_policy_int[j]);
-         for (int j = 0; j < prt.m_num_runtime_int; ++j)
-             prt.m_runtime_idata[j][i_prt] = initializeIntValue(m_policy_int[j+PartData::NAI]);
+        // initialize the int components after cpu & id
+        for (int j = 2; j < PartData::NAI; ++j)
+            prt.m_idata[j][i_prt] = initializeIntValue(m_policy_int[j]);
+        for (int j = 0; j < prt.m_num_runtime_int; ++j)
+            prt.m_runtime_idata[j][i_prt] = initializeIntValue(m_policy_int[j+PartData::NAI]);
     }
 };
 

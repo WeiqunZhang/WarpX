@@ -86,10 +86,6 @@ extern "C" {
 
     void warpx_convert_cpu_to_int (int* cpus, const WarpXParticleContainer::ParticleType* pstructs, int size);
 
-    amrex::ParticleReal** warpx_getParticleStructs(
-        const char* char_species_name, int lev, int* num_tiles,
-        int** particles_per_tile);
-
     amrex::ParticleReal** warpx_getParticleArrays(
         const char* char_species_name, const char* char_comp_name, int lev,
         int* num_tiles, int** particles_per_tile);
@@ -111,10 +107,6 @@ extern "C" {
     amrex::ParticleReal** warpx_getParticleBoundaryBuffer(
         const char* species_name, int boundary, int lev,
         int* num_tiles, int** particles_per_tile, const char* comp_name);
-
-    amrex::ParticleReal** warpx_getParticleBoundaryBufferStructs(
-            const char* species_name, int boundary, int lev,
-            int* num_tiles, int** particles_per_tile);
 
     void warpx_clearParticleBoundaryBuffer ();
 

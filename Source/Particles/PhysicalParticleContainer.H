@@ -234,9 +234,7 @@ public:
      * @param[in] engine the random engine, used in initialization of QED optical depths
      */
     virtual void DefaultInitializeRuntimeAttributes (
-                    amrex::ParticleTile<amrex::Particle<NStructReal, NStructInt>,
-                                        NArrayReal, NArrayInt,
-                                        amrex::PinnedArenaAllocator>& pinned_tile,
+                    typename ContainerLike<amrex::PinnedArenaAllocator>::ParticleTileType& pinned_tile,
                     const int n_external_attr_real,
                     const int n_external_attr_int,
                     const amrex::RandomEngine& engine) override final;

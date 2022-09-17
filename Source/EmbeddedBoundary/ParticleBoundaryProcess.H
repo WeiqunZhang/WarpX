@@ -25,12 +25,12 @@ struct NoOp {
 struct Absorb {
     template <typename PData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    void operator() (const PData& ptd, int i,
+    void operator() (PData& ptd, int i,
                      const amrex::RealVect& /*pos*/, const amrex::RealVect& /*normal*/,
                      amrex::RandomEngine const& /*engine*/) const noexcept
     {
-        auto& p = ptd.m_aos[i];
-        p.id() = -p.id();
+        //ptd.id(i) = -ptd.id(i);  // FIXME: in AMReX - why does that not work?
+        ptd.m_idata[0][i] = -ptd.id(i);
     }
 };
 }

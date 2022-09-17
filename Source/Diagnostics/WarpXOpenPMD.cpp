@@ -939,31 +939,7 @@ WarpXOpenPMDPlot::SaveRealProperty (ParticleIter& pti,
 {
   auto const numParticleOnTile = pti.numParticles();
   uint64_t const numParticleOnTile64 = static_cast<uint64_t>( numParticleOnTile );
-  auto const& aos = pti.GetArrayOfStructs();  // size =  numParticlesOnTile
   auto const& soa = pti.GetStructOfArrays();
-  // first we concatinate the AoS into contiguous arrays
-  {
-    // note: WarpX does not yet use extra AoS Real attributes
-    for( auto idx=0; idx<ParticleIter::ContainerType::NStructReal; idx++ ) {  // lgtm [cpp/constant-comparison]
-      if( write_real_comp[idx] ) {
-          // handle scalar and non-scalar records by name
-          const auto [record_name, component_name] = detail::name2openPMD(real_comp_names[idx]);
-          auto currRecord = currSpecies[record_name];
-          auto currRecordComp = currRecord[component_name];
-
-          std::shared_ptr< amrex::ParticleReal > d(
-              new amrex::ParticleReal[numParticleOnTile],
-              [](amrex::ParticleReal const *p){ delete[] p; }
-          );
-
-          for( auto kk=0; kk<numParticleOnTile; kk++ )
-               d.get()[kk] = aos[kk].rdata(idx);
-
-          currRecordComp.storeChunk(d,
-               {offset}, {numParticleOnTile64});
-      }
-    }
-  }
 
   auto const getComponentRecord = [&currSpecies](std::string const comp_name) {
     // handle scalar and non-scalar records by name
@@ -975,9 +951,8 @@ WarpXOpenPMDPlot::SaveRealProperty (ParticleIter& pti,
   {
     auto const real_counter = std::min(write_real_comp.size(), real_comp_names.size());
     for (auto idx=0; idx<real_counter; idx++) {
-      auto ii = ParticleIter::ContainerType::NStructReal + idx;  // jump over extra AoS names
-      if (write_real_comp[ii]) {
-        getComponentRecord(real_comp_names[ii]).storeChunkRaw(
+      if (write_real_comp[idx]) {
+        getComponentRecord(real_comp_names[idx]).storeChunkRaw(
           soa.GetRealData(idx).data(), {offset}, {numParticleOnTile64});
       }
     }
