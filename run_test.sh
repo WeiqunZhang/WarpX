@@ -70,8 +70,8 @@ export SETUPTOOLS_USE_DISTUTILS="stdlib"
 python3 -m pip install --upgrade -r warpx/Regression/requirements.txt
 
 # Clone AMReX and warpx-data
-git clone https://github.com/AMReX-Codes/amrex.git
-cd amrex && git checkout --detach 23.04 && cd -
+git clone https://github.com/WeiqunZhang/amrex.git
+cd amrex && git checkout --detach test_geom && cd -
 # warpx-data contains various required data sets
 git clone --depth 1 https://github.com/ECP-WarpX/warpx-data.git
 
