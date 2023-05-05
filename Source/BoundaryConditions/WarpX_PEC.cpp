@@ -220,79 +220,83 @@ PEC::ApplyPECtoRhofield (amrex::MultiFab* rho, const int lev, PatchType patch_ty
         amrex::IntVect ref_ratio = ( (lev > 0) ? WarpX::RefRatio(lev-1) : amrex::IntVect(1) );
         domain_box.coarsen(ref_ratio);
     }
+    domain_box.convert(rho->ixType());
+
     amrex::IntVect domain_lo = domain_box.smallEnd();
     amrex::IntVect domain_hi = domain_box.bigEnd();
 
-    amrex::GpuArray<int, 3> fbndry_lo, fbndry_hi;
-    amrex::GpuArray<ParticleBoundaryType, 3> pbndry_lo, pbndry_hi;
-    for (int idim=0; idim < AMREX_SPACEDIM; ++idim) {
-        fbndry_lo[idim] = WarpX::field_boundary_lo[idim];
-        fbndry_hi[idim] = WarpX::field_boundary_hi[idim];
-        pbndry_lo[idim] = WarpX::particle_boundary_lo[idim];
-        pbndry_hi[idim] = WarpX::particle_boundary_hi[idim];
-    }
+    amrex::Box grown_domain_box = domain_box;
+
     amrex::IntVect rho_nodal = rho->ixType().toIntVect();
     amrex::IntVect ng_fieldgather = rho->nGrowVect();
 
+    amrex::GpuArray<GpuArray<bool,2>, AMREX_SPACEDIM> is_pec;
+    amrex::GpuArray<GpuArray<amrex::Real,2>, AMREX_SPACEDIM> psign;
+    amrex::GpuArray<GpuArray<int,2>, AMREX_SPACEDIM> mirrorfac;
+    for (int idim=0; idim < AMREX_SPACEDIM; ++idim) {
+        is_pec[idim][0] = WarpX::field_boundary_lo[idim] == FieldBoundaryType::PEC;
+        is_pec[idim][1] = WarpX::field_boundary_hi[idim] == FieldBoundaryType::PEC;
+        if (!is_pec[idim][0]) {
+            grown_domain_box.growLo(idim, ng_fieldgather[idim]);
+        }
+        if (!is_pec[idim][1]) {
+            grown_domain_box.growHi(idim, ng_fieldgather[idim]);
+        }
+        psign[idim][0] = (WarpX::particle_boundary_lo[idim] == ParticleBoundaryType::Reflecting)
+                         ? 1._rt : -1._rt;
+        psign[idim][1] = (WarpX::particle_boundary_hi[idim] == ParticleBoundaryType::Reflecting)
+                         ? 1._rt : -1._rt;
+        mirrorfac[idim][0] = 2*domain_lo[idim] - (1-rho_nodal[idim]);
+        mirrorfac[idim][1] = 2*domain_hi[idim] + (1-rho_nodal[idim]);
+    }
     const int nComp = rho->nComp();
 
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
-    for (amrex::MFIter mfi(*rho, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-
-        // Extract field data
-        amrex::Array4<amrex::Real> const& rho_array = rho->array(mfi);
-
-        // Construct a tilebox to loop over the grid
-        amrex::Box tb = convert( mfi.tilebox(), rho_nodal );
-
-        // Grow the tilebox to include the guard cells for the PEC boundaries
-        for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-            if (fbndry_lo[idim] == FieldBoundaryType::PEC)
-                tb.growLo(idim, ng_fieldgather[idim]);
-            if (fbndry_hi[idim] == FieldBoundaryType::PEC)
-                tb.growHi(idim, ng_fieldgather[idim]);
+    for (amrex::MFIter mfi(*rho); mfi.isValid(); ++mfi) {
+        Box const& fabbox = mfi.fabbox();
+        if (!grown_domain_box.contains(fabbox)) {
+            auto const& rho_array = rho->array(mfi);
+            amrex::ParallelFor(mfi.validbox(), nComp, [=] AMREX_GPU_DEVICE (int i, int j, int k, int n)
+            {
+                amrex::IntVect iv(AMREX_D_DECL(i,j,k));
+                for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
+                {
+                    for (int iside = 0; iside < 2; ++iside)
+                    {
+                        if (is_pec[idim][iside])
+                        {
+                            amrex::IntVect iv_mirror = iv;
+                            iv_mirror[idim] = mirrorfac[idim][iside] - iv[idim];
+                            if (iv == iv_mirror)
+                            {
+                                rho(i,j,k,n) = 0._rt;
+                            }
+                            else if (fabbox.contains(iv_mirror))
+                            {
+                                rho(i,j,k,n) += psign[idim][iside] * rho(iv_mirror,n);
+                            }
+                        }
+                    }
+                }
+                for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
+                {
+                    for (int iside = 0; iside < 2; ++iside)
+                    {
+                        if (is_pec[idim][iside])
+                        {
+                            amrex::IntVect iv_mirror = iv;
+                            iv_mirror[idim] = mirrorfac[idim][iside] - iv[idim];
+                            if (iv != iv_mirror && fabbox.contains(iv_mirror))
+                            {
+                                rho(iv_mirror,n) = -rho(i,j,k,n);
+                            }
+                        }
+                    }
+                }
+            });
         }
-
-        // The rho boundary is handled in 2 steps:
-        // 1) The cells internal to the domain are updated using the
-        //    charge deposited in the guard cells
-        // 2) The guard cells are updated with the appropriate image charges
-        //    based on the charge in the valid cells
-        // loop over cells and update fields
-        amrex::ParallelFor(
-            tb, nComp,
-            [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) {
-#if (defined WARPX_DIM_XZ) || (defined WARPX_DIM_RZ)
-                amrex::ignore_unused(k);
-#elif (defined WARPX_DIM_1D_Z)
-                amrex::ignore_unused(j,k);
-#endif
-                amrex::IntVect iv(AMREX_D_DECL(i,j,k));
-                PEC::SetRhofieldFromPEC(
-                    domain_lo, domain_hi, ng_fieldgather, iv, n,
-                    rho_array, rho_nodal,
-                    fbndry_lo, fbndry_hi, pbndry_lo, pbndry_hi
-                );
-            }
-        );
-
-        amrex::ParallelFor(
-            tb, nComp,
-            [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) {
-#if (defined WARPX_DIM_XZ) || (defined WARPX_DIM_RZ)
-                amrex::ignore_unused(k);
-#elif (defined WARPX_DIM_1D_Z)
-                amrex::ignore_unused(j,k);
-#endif
-                amrex::IntVect iv(AMREX_D_DECL(i,j,k));
-                PEC::SetRhofieldOnPEC(
-                    domain_lo, domain_hi, iv, n, rho_array, rho_nodal,
-                    fbndry_lo, fbndry_hi
-                );
-            }
-        );
     }
 }
 
