@@ -547,8 +547,10 @@ WarpX::ImposeFieldsInPlane ()
         }
     }
 
+    const Real t = t_new[0];
+    const Real ct = PhysConst::c * t;
+
    // TODO boosted frame
-    Real t = t_new[0];
     auto z_lab_to_boost = [=] (Real zlab) -> Real
     {
         return zlab;
@@ -559,7 +561,7 @@ WarpX::ImposeFieldsInPlane ()
         return zboost;
     };
 
-    const Real zplane = z_lab_to_boost(impose_field_plane_z - PhysConst::c*t);
+    const Real zplane = z_lab_to_boost(impose_field_plane_z);
 
     for (int lev = 0; lev <= finestLevel(); ++lev)
     {
@@ -574,8 +576,8 @@ WarpX::ImposeFieldsInPlane ()
         const auto izmin = int(std::floor((zmin-zlo)/dz));
         const auto izmax = int(std::floor((zmax-zlo)/dz))+1;
 
-        const auto zlo_lab  = m_external_geom[lev].ProbLo(zdir);
-        const auto dz_lab   = m_external_geom[lev].CellSize(zdir);
+        const auto zlo_ext  = m_external_geom[lev].ProbLo(zdir);
+        const auto dz_ext   = m_external_geom[lev].CellSize(zdir);
 
         AMREX_ALWAYS_ASSERT(Geom(lev).Domain().smallEnd(zdir) == 0 &&
                             m_external_geom[lev].Domain().smallEnd(zdir) == 0);
@@ -586,15 +588,15 @@ WarpX::ImposeFieldsInPlane ()
             -> std::pair<int,Real>
         {
             Real z = zlo + (k+0.5_rt)*dz;
-            Real zlab = z_boost_to_lab(z);
-            int klab = int(std::floor((zlab-zlo_lab)/dz_lab));
-            Real zclab = zlo_lab + (klab+0.5_rt)*dz_lab;
-            if (zclab <= zlab) {
-                Real w = std::max(1.0_rt - (zlab-zclab)/dz_lab, 0.0_rt);
-                return {klab, w};
+            Real zext = z_boost_to_lab(z) - ct;
+            int kext = int(std::floor((zext-zlo_ext)/dz_ext));
+            Real zcext = zlo_ext + (kext+0.5_rt)*dz_ext;
+            if (zcext <= zext) {
+                Real w = std::max(1.0_rt - (zext-zcext)/dz_ext, 0.0_rt);
+                return {kext, w};
             } else {
-                Real w = std::min((zclab-zlab)/dz_lab, 1.0_rt);
-                return {klab-1, w};
+                Real w = std::min((zcext-zext)/dz_ext, 1.0_rt);
+                return {kext-1, w};
             }
         };
 
@@ -604,11 +606,11 @@ WarpX::ImposeFieldsInPlane ()
             -> std::pair<int,Real>
         {
             Real z = zlo + k*dz;
-            Real zlab = z_boost_to_lab(z);
-            int klab = int(std::floor((zlab-zlo_lab)/dz_lab));
-            Real w = 1.0_rt - (zlab - (zlo_lab+klab*dz_lab)) / dz_lab;
+            Real zext = z_boost_to_lab(z) - ct;
+            int kext = int(std::floor((zext-zlo_ext)/dz_ext));
+            Real w = 1.0_rt - (zext - (zlo_ext+kext*dz_ext)) / dz_ext;
             w = std::max(std::min(w,1.0_rt),0.0_rt);
-            return {klab, w};
+            return {kext, w};
         };
 
         Box planebox = Geom(lev).Domain();
@@ -624,8 +626,8 @@ WarpX::ImposeFieldsInPlane ()
         std::map<int,int> index_map;
 
         int nboxes = ba.size();
-        int kmin_lab = std::numeric_limits<int>::max();
-        int kmax_lab = std::numeric_limits<int>::lowest();
+        int kmin_ext = std::numeric_limits<int>::max();
+        int kmax_ext = std::numeric_limits<int>::lowest();
         for (int ibox = 0; ibox < nboxes; ++ibox) {
             Box b = ba[ibox] & planebox;
             if (b.ok()) {
@@ -638,31 +640,37 @@ WarpX::ImposeFieldsInPlane ()
                 bl.push_back(b);
                 procmap.push_back(dm[ibox]);
                 index_map[ibox] = bl.size() - 1;
-                kmin_lab = std::min(kmin_lab, b.smallEnd(zdir));
-                kmax_lab = std::max(kmax_lab, b.bigEnd  (zdir));
+                kmin_ext = std::min(kmin_ext, b.smallEnd(zdir));
+                kmax_ext = std::max(kmax_ext, b.bigEnd  (zdir));
             }
         }
 
-        if (kmin_lab   < m_external_geom[lev].Domain().smallEnd(zdir) ||
-            kmax_lab-1 > m_external_geom[lev].Domain().bigEnd  (zdir))
+        if (kmax_ext < kmin_ext) {
+            // TODO: how to handle this?
+            amrex::Print() << "WARNING: ImposeFieldsInPlane's plane is now out of the simulation domain\n";
+            return;
+        }
+
+        if (kmin_ext < m_external_geom[lev].Domain().smallEnd(zdir) ||
+            kmax_ext > m_external_geom[lev].Domain().bigEnd  (zdir)+1)
         {
             // TODO: how to handle this?
             amrex::Print() << "WARNING: ImposeFieldsInPlane() needs data on ["
-                           << kmin_lab << "," << kmax_lab-1 << "], but available data are on ["
+                           << kmin_ext << "," << kmax_ext << "], but available data are on ["
                            << m_external_geom[lev].Domain().smallEnd(zdir) << ","
-                           << m_external_geom[lev].Domain().bigEnd  (zdir) << "].\n";
+                           << m_external_geom[lev].Domain().bigEnd  (zdir)+1 << "].\n";
         }
 
-        BoxArray balab(std::move(bl));
-        DistributionMapping dmlab(std::move(procmap));
+        BoxArray baext(std::move(bl));
+        DistributionMapping dmext(std::move(procmap));
 
-        auto impose_field = [&] (MultiFab& mf, MultiFab const& mf_lab)
+        auto impose_field = [&] (MultiFab& mf, MultiFab const& mf_ext)
         {
             auto typ = mf.ixType();
             bool is_nodal = typ.nodeCentered(zdir);
-            MultiFab mf_src(amrex::convert(balab,typ), dmlab, 1, 0);
+            MultiFab mf_src(amrex::convert(baext,typ), dmext, 1, 0);
             mf_src.setVal(0.0_rt);
-            mf_src.ParallelCopy(mf_lab, 0, 0, 1);
+            mf_src.ParallelCopy(mf_ext, 0, 0, 1);
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (Gpu::notInLaunchRegion())
 #endif
@@ -687,15 +695,6 @@ WarpX::ImposeFieldsInPlane ()
                 }
             }
         };
-
-        for (int idim = 0; idim < 3; ++idim) {
-            if (impose_E_field_in_plane) {
-                impose_field(*Efield_fp[lev][idim], *Efield_fp_external[lev][idim]);
-            }
-            if (impose_B_field_in_plane) {
-                impose_field(*Bfield_fp[lev][idim], *Bfield_fp_external[lev][idim]);
-            }
-        }
     }
 }
 
