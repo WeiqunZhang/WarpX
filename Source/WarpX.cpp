@@ -699,11 +699,29 @@ WarpX::ReadParameters ()
                                              "External field reading is not implemented for more than one level");
             add_external_B_field = true;
         }
+        else if (WarpX::B_ext_grid_s == "impose_field_in_plane")
+        {
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(max_level == 0,
+                                             "Imposing field in a plane is not implemented for more than one level");
+            impose_B_field_in_plane = true;
+        }
+
         if (WarpX::E_ext_grid_s == "read_from_file")
         {
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(max_level == 0,
                                              "External field reading is not implemented for more than one level");
             add_external_E_field = true;
+        }
+        else if (WarpX::E_ext_grid_s == "impose_field_in_plane")
+        {
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(max_level == 0,
+                                             "Imposing field in a plane is not implemented for more than one level");
+            impose_E_field_in_plane = true;
+        }
+
+        if (impose_B_field_in_plane || impose_E_field_in_plane) {
+            utils::parser::getWithParser(
+                pp_warpx, "impose_field_plane_z", impose_field_plane_z);
         }
 
         electrostatic_solver_id = GetAlgorithmInteger(pp_warpx, "do_electrostatic");

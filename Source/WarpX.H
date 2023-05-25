@@ -127,6 +127,13 @@ public:
     //! Whether to apply the effect of an externally-defined magnetic field
     static bool add_external_B_field;
 
+    //! Whether to impose E field in a plane
+    static inline bool impose_E_field_in_plane = false;
+    //! Whether to impose E field in a plane
+    static inline bool impose_B_field_in_plane = false;
+
+    static inline amrex::Real impose_field_plane_z = std::numeric_limits<amrex::Real>::quiet_NaN();
+
     //! String storing parser function to initialize x-component of the magnetic field on the grid
     static std::string str_Bx_ext_grid_function;
     //! String storing parser function to initialize y-component of the magnetic field on the grid
@@ -1043,6 +1050,8 @@ public:
     // Return the accelerator lattice instance defined at the given refinement level
     const AcceleratorLattice& get_accelerator_lattice (int lev) {return *(m_accelerator_lattice[lev]);}
 
+    void ImposeFieldsInPlane (); // needs to be public for cuda
+
 protected:
 
     /**
@@ -1339,6 +1348,9 @@ private:
     // Same as Bfield_fp/Efield_fp for reading external field data
     amrex::Vector<std::array< std::unique_ptr<amrex::MultiFab>, 3 > > Efield_fp_external;
     amrex::Vector<std::array< std::unique_ptr<amrex::MultiFab>, 3 > > Bfield_fp_external;
+
+    // Geometry associated with the data for imposing fields in plance
+    amrex::Vector<amrex::Geometry> m_external_geom;
 
     //! EB: Lengths of the mesh edges
     amrex::Vector<std::array< std::unique_ptr<amrex::MultiFab>, 3 > > m_edge_lengths;

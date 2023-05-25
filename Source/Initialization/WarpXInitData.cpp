@@ -59,6 +59,7 @@
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_Parser.H>
+#include <AMReX_PlotFileUtil.H>
 #include <AMReX_Print.H>
 #include <AMReX_REAL.H>
 #include <AMReX_RealBox.H>
@@ -446,6 +447,8 @@ WarpX::InitData ()
         // solution and any external field
         AddExternalFields();
 
+        ImposeFieldsInPlane();
+
         // Write full diagnostics before the first iteration.
         multi_diags->FilterComputePackFlush( -1 );
 
@@ -475,6 +478,223 @@ WarpX::AddExternalFields () {
             amrex::MultiFab::Add(*Bfield_fp[lev][0], *Bfield_fp_external[lev][0], 0, 0, 1, guard_cells.ng_alloc_EB);
             amrex::MultiFab::Add(*Bfield_fp[lev][1], *Bfield_fp_external[lev][1], 0, 0, 1, guard_cells.ng_alloc_EB);
             amrex::MultiFab::Add(*Bfield_fp[lev][2], *Bfield_fp_external[lev][2], 0, 0, 1, guard_cells.ng_alloc_EB);
+        }
+    }
+}
+
+namespace
+{
+    std::unique_ptr<MultiFab> read_raw_field (BoxArray const& ba,
+                                              DistributionMapping const& dm,
+                                              std::string const& filename)
+    {
+        VisMF vismf(filename);
+        auto mf = std::make_unique<MultiFab>(ba,dm,vismf.nComp(),vismf.nGrowVect());
+        VisMF::Read(*mf, filename);
+        return mf;
+    }
+}
+
+void
+WarpX::ImposeFieldsInPlane ()
+{
+    if (!impose_E_field_in_plane || !impose_B_field_in_plane) return;
+
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(!add_external_E_field && !add_external_B_field,
+                                     "Cannot have both add-external-fields and impose-fields-in-plane");
+
+    if (m_external_geom.empty()) {
+        std::string field_path;
+        ParmParse("warpx").get("read_fields_from_path", field_path);
+        PlotFileData pf(field_path);
+        for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
+            m_external_geom.emplace_back(pf.probDomain(lev),
+                                         RealBox(pf.probLo(), pf.probHi()),
+                                         Geom(0).Coord(),
+                                         Geom(0).isPeriodic());
+            // TODO Assert that the boost direction is the last direction
+            for (int idim = 0; idim < AMREX_SPACEDIM-1; ++idim) {
+                AMREX_ALWAYS_ASSERT(
+                    amrex::almostEqual(m_external_geom[lev].CellSize(idim),
+                                                  Geom(lev).CellSize(idim))
+                 && amrex::almostEqual(m_external_geom[lev].ProbLo(idim),
+                                                  Geom(lev).ProbLo(idim))
+                 && m_external_geom[lev].Domain().length(idim)
+                    ==         Geom(lev).Domain().length(idim));
+            }
+
+            std::string raw_field_path = field_path;
+            raw_field_path.append("/raw_fields/Level_")
+                .append(std::to_string(lev)).append("/");
+
+            if (impose_E_field_in_plane) {
+                std::array<std::string,3> Exyz{"Ex_fp","Ey_fp","Ez_fp"};
+                for (int idim = 0; idim < 3; ++idim) {
+                    Efield_fp_external[lev][idim] = read_raw_field
+                        (amrex::convert(pf.boxArray(lev), Efield_fp[lev][idim]->ixType()),
+                         pf.DistributionMap(lev), raw_field_path+Exyz[idim]);
+                }
+            }
+
+            if (impose_B_field_in_plane) {
+                std::array<std::string,3> Bxyz{"Bx_fp","By_fp","Bz_fp"};
+                for (int idim = 0; idim < 3; ++idim) {
+                    Bfield_fp_external[lev][idim] = read_raw_field
+                        (amrex::convert(pf.boxArray(lev), Bfield_fp[lev][idim]->ixType()),
+                         pf.DistributionMap(lev), raw_field_path+Bxyz[idim]);
+                }
+            }
+        }
+    }
+
+   // TODO boosted frame
+    Real t = t_new[0];
+    auto z_lab_to_boost = [=] (Real zlab) -> Real
+    {
+        return zlab;
+    };
+
+    auto z_boost_to_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
+    {
+        return zboost;
+    };
+
+    const Real zplane = z_lab_to_boost(impose_field_plane_z - PhysConst::c*t);
+
+    for (int lev = 0; lev <= finestLevel(); ++lev)
+    {
+        AMREX_ALWAYS_ASSERT(finestLevel() == 0);
+        const int zdir = AMREX_SPACEDIM-1;
+        const auto ngz = std::max(Efield_fp[lev][0]->nGrowVect()[zdir],
+                                  Bfield_fp[lev][0]->nGrowVect()[zdir]);
+        const auto zlo  = Geom(lev).ProbLo(zdir);
+        const auto dz   = Geom(lev).CellSize(zdir);
+        Real zmin = zplane - 0.5_rt*dz*ngz;
+        Real zmax = zplane + 0.5_rt*dz*ngz;
+        const auto izmin = int(std::floor((zmin-zlo)/dz));
+        const auto izmax = int(std::floor((zmax-zlo)/dz))+1;
+
+        const auto zlo_lab  = m_external_geom[lev].ProbLo(zdir);
+        const auto dz_lab   = m_external_geom[lev].CellSize(zdir);
+
+        AMREX_ALWAYS_ASSERT(Geom(lev).Domain().smallEnd(zdir) == 0 &&
+                            m_external_geom[lev].Domain().smallEnd(zdir) == 0);
+
+        // Given a cell index, this returns information for interpolation,
+        // the lower index in the external field and its weight
+        auto cc_interp_info = [=] AMREX_GPU_HOST_DEVICE (int k)
+            -> std::pair<int,Real>
+        {
+            Real z = zlo + (k+0.5_rt)*dz;
+            Real zlab = z_boost_to_lab(z);
+            int klab = int(std::floor((zlab-zlo_lab)/dz_lab));
+            Real zclab = zlo_lab + (klab+0.5_rt)*dz_lab;
+            if (zclab <= zlab) {
+                Real w = std::max(1.0_rt - (zlab-zclab)/dz_lab, 0.0_rt);
+                return {klab, w};
+            } else {
+                Real w = std::min((zclab-zlab)/dz_lab, 1.0_rt);
+                return {klab-1, w};
+            }
+        };
+
+        // Given a nodal index, this returns information for interpolation,
+        // the lower index in the external field and its weight
+        auto nd_interp_info = [=] AMREX_GPU_HOST_DEVICE (int k)
+            -> std::pair<int,Real>
+        {
+            Real z = zlo + k*dz;
+            Real zlab = z_boost_to_lab(z);
+            int klab = int(std::floor((zlab-zlo_lab)/dz_lab));
+            Real w = 1.0_rt - (zlab - (zlo_lab+klab*dz_lab)) / dz_lab;
+            w = std::max(std::min(w,1.0_rt),0.0_rt);
+            return {klab, w};
+        };
+
+        Box planebox = Geom(lev).Domain();
+        planebox.surroundingNodes(zdir).setSmall(zdir, izmin).setBig(zdir, izmax);
+
+        BoxArray ba = Efield_fp[lev][0]->boxArray();
+        ba.enclosedCells().surroundingNodes(zdir);
+
+        DistributionMapping const& dm = Efield_fp[lev][0]->DistributionMap();
+
+        BoxList bl(ba.ixType());
+        Vector<int> procmap;
+        std::map<int,int> index_map;
+
+        int nboxes = ba.size();
+        int kmin_lab = std::numeric_limits<int>::max();
+        int kmax_lab = std::numeric_limits<int>::lowest();
+        for (int ibox = 0; ibox < nboxes; ++ibox) {
+            Box b = ba[ibox] & planebox;
+            if (b.ok()) {
+                auto cclo = cc_interp_info(b.smallEnd(zdir));
+                auto cchi = cc_interp_info(b.bigEnd(zdir)-1);
+                auto ndlo = nd_interp_info(b.smallEnd(zdir));
+                auto ndhi = nd_interp_info(b.bigEnd(zdir));
+                b.setSmall(zdir, std::min(cclo.first  ,ndlo.first  ));
+                b.setBig  (zdir, std::max(cchi.first+2,ndhi.first+1));
+                bl.push_back(b);
+                procmap.push_back(dm[ibox]);
+                index_map[ibox] = bl.size() - 1;
+                kmin_lab = std::min(kmin_lab, b.smallEnd(zdir));
+                kmax_lab = std::max(kmax_lab, b.bigEnd  (zdir));
+            }
+        }
+
+        if (kmin_lab   < m_external_geom[lev].Domain().smallEnd(zdir) ||
+            kmax_lab-1 > m_external_geom[lev].Domain().bigEnd  (zdir))
+        {
+            // TODO: how to handle this?
+            amrex::Print() << "WARNING: ImposeFieldsInPlane() needs data on ["
+                           << kmin_lab << "," << kmax_lab-1 << "], but available data are on ["
+                           << m_external_geom[lev].Domain().smallEnd(zdir) << ","
+                           << m_external_geom[lev].Domain().bigEnd  (zdir) << "].\n";
+        }
+
+        BoxArray balab(std::move(bl));
+        DistributionMapping dmlab(std::move(procmap));
+
+        auto impose_field = [&] (MultiFab& mf, MultiFab const& mf_lab)
+        {
+            auto typ = mf.ixType();
+            bool is_nodal = typ.nodeCentered(zdir);
+            MultiFab mf_src(amrex::convert(balab,typ), dmlab, 1, 0);
+            mf_src.setVal(0.0_rt);
+            mf_src.ParallelCopy(mf_lab, 0, 0, 1);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+            for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                Box bx = mfi.tilebox() & amrex::convert(planebox,typ);
+                if (bx.ok()) {
+                    auto const& dst = mf.array(mfi);
+                    auto const& src = mf_src.array(index_map[mfi.index()]);
+                    AMREX_ALWAYS_ASSERT(AMREX_SPACEDIM > 1);
+                    amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                    {
+#if (AMREX_SPACEDIM == 2)
+                        auto [jj,w] = is_nodal ? nd_interp_info(j)
+                                               : cc_interp_info(j);
+                        dst(i,j,k) = src(i,jj,k)*w + src(i,jj+1,k)*(1.0_rt-w);
+#else
+                        auto [kk,w] = is_nodal ? nd_interp_info(k)
+                                               : cc_interp_info(k);
+                        dst(i,j,k) = src(i,j,kk)*w + src(i,j,kk+1)*(1.0_rt-w);
+#endif
+                    });
+                }
+            }
+        };
+
+        for (int idim = 0; idim < 3; ++idim) {
+            if (impose_E_field_in_plane) {
+                impose_field(*Efield_fp[lev][idim], *Efield_fp_external[lev][idim]);
+            }
+            if (impose_B_field_in_plane) {
+                impose_field(*Bfield_fp[lev][idim], *Bfield_fp_external[lev][idim]);
+            }
         }
     }
 }
