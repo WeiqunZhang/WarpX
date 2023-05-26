@@ -720,8 +720,7 @@ WarpX::ReadParameters ()
         }
 
         if (impose_B_field_in_plane || impose_E_field_in_plane) {
-            utils::parser::getWithParser(
-                pp_warpx, "impose_field_plane_z", impose_field_plane_z);
+            pp_warpx.get("read_fields_from_path", impose_field_file_path);
         }
 
         electrostatic_solver_id = GetAlgorithmInteger(pp_warpx, "do_electrostatic");

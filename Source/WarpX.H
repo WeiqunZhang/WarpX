@@ -131,8 +131,8 @@ public:
     static inline bool impose_E_field_in_plane = false;
     //! Whether to impose E field in a plane
     static inline bool impose_B_field_in_plane = false;
-
-    static inline amrex::Real impose_field_plane_z = std::numeric_limits<amrex::Real>::quiet_NaN();
+    //
+    static inline std::string impose_field_file_path;
 
     //! String storing parser function to initialize x-component of the magnetic field on the grid
     static std::string str_Bx_ext_grid_function;
@@ -1050,6 +1050,7 @@ public:
     // Return the accelerator lattice instance defined at the given refinement level
     const AcceleratorLattice& get_accelerator_lattice (int lev) {return *(m_accelerator_lattice[lev]);}
 
+    void InitImposeFieldsGeom ();
     void ImposeFieldsInPlane (); // needs to be public for cuda
 
 protected:

@@ -384,6 +384,10 @@ WarpX::InitData ()
 
     Print() << utils::logo::get_logo();
 
+    if (impose_E_field_in_plane || impose_B_field_in_plane) {
+        InitImposeFieldsGeom();
+    }
+
     // WarpX::computeMaxStepBoostAccelerator
     // needs to start from the initial zmin_domain_boost,
     // even if restarting from a checkpoint file
@@ -484,15 +488,43 @@ WarpX::AddExternalFields () {
 
 namespace
 {
-    std::unique_ptr<MultiFab> read_raw_field (BoxArray const& ba,
-                                              DistributionMapping const& dm,
+    std::unique_ptr<MultiFab> read_raw_field (BoxArray& ba,
+                                              DistributionMapping& dm,
+                                              IndexType itype,
                                               std::string const& filename)
     {
-        VisMF vismf(filename);
-        auto mf = std::make_unique<MultiFab>(ba,dm,vismf.nComp(),vismf.nGrowVect());
-        VisMF::Read(*mf, filename);
-        return mf;
+        if (ba.empty()) {
+            auto mf = std::make_unique<MultiFab>();
+            VisMF::Read(*mf, filename);
+            ba = mf->boxArray();
+            dm = mf->DistributionMap();
+            return mf;
+        } else {
+            VisMF vismf(filename);
+            auto mf = std::make_unique<MultiFab>(amrex::convert(ba,itype),
+                                                 dm, vismf.nComp(),
+                                                 vismf.nGrowVect());
+            VisMF::Read(*mf, filename);
+            return mf;
+        }
     }
+}
+
+void
+WarpX::InitImposeFieldsGeom ()
+{
+    AMREX_ALWAYS_ASSERT(boost_direction[0] != 1 && boost_direction[1] != 1);
+
+    PlotFileData pf(impose_field_file_path);
+    for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
+        m_external_geom.emplace_back(pf.probDomain(lev),
+                                     RealBox(pf.probLo(), pf.probHi()),
+                                     Geom(lev).Coord(), Geom(lev).isPeriodic());
+    }
+    amrex::Print() << "GEOMS: " << m_external_geom[0] << "\n"
+                   << Geom(0) << std::endl;
+    // ResetProbDomain(m_external_geom[0].ProbDomain());
+    // TODO: This does not work yet. We need to do this much eariler
 }
 
 void
@@ -503,45 +535,32 @@ WarpX::ImposeFieldsInPlane ()
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(!add_external_E_field && !add_external_B_field,
                                      "Cannot have both add-external-fields and impose-fields-in-plane");
 
-    if (m_external_geom.empty()) {
-        std::string field_path;
-        ParmParse("warpx").get("read_fields_from_path", field_path);
-        PlotFileData pf(field_path);
-        for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
-            m_external_geom.emplace_back(pf.probDomain(lev),
-                                         RealBox(pf.probLo(), pf.probHi()),
-                                         Geom(0).Coord(),
-                                         Geom(0).isPeriodic());
-            // TODO Assert that the boost direction is the last direction
+    if (Efield_fp_external[0][0] == nullptr &&
+        Bfield_fp_external[0][0] == nullptr) {
+        for (int lev = 0; lev <= finestLevel(); ++lev) {
+            BoxArray ba0;
+            DistributionMapping dm0;
             for (int idim = 0; idim < AMREX_SPACEDIM-1; ++idim) {
-                AMREX_ALWAYS_ASSERT(
-                    amrex::almostEqual(m_external_geom[lev].CellSize(idim),
-                                                  Geom(lev).CellSize(idim))
-                 && amrex::almostEqual(m_external_geom[lev].ProbLo(idim),
-                                                  Geom(lev).ProbLo(idim))
-                 && m_external_geom[lev].Domain().length(idim)
-                    ==         Geom(lev).Domain().length(idim));
-            }
+                std::string raw_field_path = impose_field_file_path;
+                raw_field_path.append("/raw_fields/Level_")
+                    .append(std::to_string(lev)).append("/");
 
-            std::string raw_field_path = field_path;
-            raw_field_path.append("/raw_fields/Level_")
-                .append(std::to_string(lev)).append("/");
-
-            if (impose_E_field_in_plane) {
-                std::array<std::string,3> Exyz{"Ex_fp","Ey_fp","Ez_fp"};
-                for (int idim = 0; idim < 3; ++idim) {
-                    Efield_fp_external[lev][idim] = read_raw_field
-                        (amrex::convert(pf.boxArray(lev), Efield_fp[lev][idim]->ixType()),
-                         pf.DistributionMap(lev), raw_field_path+Exyz[idim]);
+                if (impose_E_field_in_plane) {
+                    std::array<std::string,3> Exyz{"Ex_fp","Ey_fp","Ez_fp"};
+                    for (int idim = 0; idim < 3; ++idim) {
+                        Efield_fp_external[lev][idim] = read_raw_field
+                            (ba0, dm0, Efield_fp[lev][idim]->ixType(),
+                             raw_field_path+Exyz[idim]);
+                    }
                 }
-            }
 
-            if (impose_B_field_in_plane) {
-                std::array<std::string,3> Bxyz{"Bx_fp","By_fp","Bz_fp"};
-                for (int idim = 0; idim < 3; ++idim) {
-                    Bfield_fp_external[lev][idim] = read_raw_field
-                        (amrex::convert(pf.boxArray(lev), Bfield_fp[lev][idim]->ixType()),
-                         pf.DistributionMap(lev), raw_field_path+Bxyz[idim]);
+                if (impose_B_field_in_plane) {
+                    std::array<std::string,3> Bxyz{"Bx_fp","By_fp","Bz_fp"};
+                    for (int idim = 0; idim < 3; ++idim) {
+                        Bfield_fp_external[lev][idim] = read_raw_field
+                        (ba0, dm0, Bfield_fp[lev][idim]->ixType(),
+                         raw_field_path+Bxyz[idim]);
+                    }
                 }
             }
         }
@@ -549,30 +568,29 @@ WarpX::ImposeFieldsInPlane ()
 
     const Real t = t_new[0];
     const Real ct = PhysConst::c * t;
+    const Real gamma = gamma_boost;
+    const Real betact = beta_boost * ct;
 
-   // TODO boosted frame
     auto z_lab_to_boost = [=] (Real zlab) -> Real
     {
-        return zlab;
+        return zlab / gamma - betact;
     };
 
     auto z_boost_to_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
     {
-        return zboost;
+        return gamma * (zboost + betact);
     };
-
-    const Real zplane = z_lab_to_boost(impose_field_plane_z);
 
     for (int lev = 0; lev <= finestLevel(); ++lev)
     {
         AMREX_ALWAYS_ASSERT(finestLevel() == 0);
         const int zdir = AMREX_SPACEDIM-1;
+        const Real zmax = z_lab_to_boost(m_external_geom[lev].ProbHi(zdir));
         const auto ngz = std::max(Efield_fp[lev][0]->nGrowVect()[zdir],
                                   Bfield_fp[lev][0]->nGrowVect()[zdir]);
         const auto zlo  = Geom(lev).ProbLo(zdir);
         const auto dz   = Geom(lev).CellSize(zdir);
-        Real zmin = zplane - 0.5_rt*dz*ngz;
-        Real zmax = zplane + 0.5_rt*dz*ngz;
+        const Real zmin = zmax - dz*ngz;
         const auto izmin = int(std::floor((zmin-zlo)/dz));
         const auto izmax = int(std::floor((zmax-zlo)/dz))+1;
 
@@ -646,24 +664,14 @@ WarpX::ImposeFieldsInPlane ()
         }
 
         if (kmax_ext < kmin_ext) {
-            // TODO: how to handle this?
-            amrex::Print() << "WARNING: ImposeFieldsInPlane's plane is now out of the simulation domain\n";
+            // The plane is now out of the simulation domain.
             return;
-        }
-
-        if (kmin_ext < m_external_geom[lev].Domain().smallEnd(zdir) ||
-            kmax_ext > m_external_geom[lev].Domain().bigEnd  (zdir)+1)
-        {
-            // TODO: how to handle this?
-            amrex::Print() << "WARNING: ImposeFieldsInPlane() needs data on ["
-                           << kmin_ext << "," << kmax_ext << "], but available data are on ["
-                           << m_external_geom[lev].Domain().smallEnd(zdir) << ","
-                           << m_external_geom[lev].Domain().bigEnd  (zdir)+1 << "].\n";
         }
 
         BoxArray baext(std::move(bl));
         DistributionMapping dmext(std::move(procmap));
 
+        // TODO: boosted frame
         auto impose_field = [&] (MultiFab& mf, MultiFab const& mf_ext)
         {
             auto typ = mf.ixType();
@@ -675,7 +683,13 @@ WarpX::ImposeFieldsInPlane ()
 #pragma omp parallel if (Gpu::notInLaunchRegion())
 #endif
             for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-                Box bx = mfi.tilebox() & amrex::convert(planebox,typ);
+                Box bx = mfi.tilebox();
+                bx.setBig(zdir, planebox.smallEnd(zdir)-1);
+                if (bx.ok()) {
+                    mf[mfi].template setVal<RunOn::Device>(0.0_rt, bx);
+                }
+
+                bx = mfi.tilebox() & amrex::convert(planebox,typ);
                 if (bx.ok()) {
                     auto const& dst = mf.array(mfi);
                     auto const& src = mf_src.array(index_map[mfi.index()]);
@@ -695,6 +709,15 @@ WarpX::ImposeFieldsInPlane ()
                 }
             }
         };
+
+        for (int idim = 0; idim < 3; ++idim) {
+            if (impose_E_field_in_plane) {
+                impose_field(*Efield_fp[lev][idim], *Efield_fp_external[lev][idim]);
+            }
+            if (impose_B_field_in_plane) {
+               impose_field(*Bfield_fp[lev][idim], *Bfield_fp_external[lev][idim]);
+            }
+        }
     }
 }
 
