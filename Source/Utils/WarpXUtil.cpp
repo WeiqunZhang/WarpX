@@ -58,6 +58,21 @@ void ParseGeometryInput()
     // Ensure that geometry.dims is set properly.
     CheckDims();
 
+    { // We must call WarpX::InitImposeFieldsGeom here so that it can
+      // modify geometry.prob_lo and geometry.prob_hi.
+        ParmParse pp_warpx("warpx");
+        pp_warpx.query("B_ext_grid_init_style", WarpX::B_ext_grid_s);
+        pp_warpx.query("E_ext_grid_init_style", WarpX::E_ext_grid_s);
+
+        WarpX::impose_B_field_in_plane = (WarpX::B_ext_grid_s == "impose_field_in_plane");
+        WarpX::impose_E_field_in_plane = (WarpX::E_ext_grid_s == "impose_field_in_plane");
+
+        if (WarpX::impose_B_field_in_plane || WarpX::impose_E_field_in_plane) {
+            pp_warpx.get("read_fields_from_path", WarpX::impose_field_file_path);
+            WarpX::InitImposeFieldsGeom();
+        }
+    }
+
     // Parse prob_lo and hi, evaluating any expressions since geometry does not
     // parse its input
     ParmParse pp_geometry("geometry");

@@ -384,10 +384,6 @@ WarpX::InitData ()
 
     Print() << utils::logo::get_logo();
 
-    if (impose_E_field_in_plane || impose_B_field_in_plane) {
-        InitImposeFieldsGeom();
-    }
-
     // WarpX::computeMaxStepBoostAccelerator
     // needs to start from the initial zmin_domain_boost,
     // even if restarting from a checkpoint file
@@ -513,18 +509,17 @@ namespace
 void
 WarpX::InitImposeFieldsGeom ()
 {
-    AMREX_ALWAYS_ASSERT(boost_direction[0] != 1 && boost_direction[1] != 1);
-
     PlotFileData pf(impose_field_file_path);
-    for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
-        m_external_geom.emplace_back(pf.probDomain(lev),
-                                     RealBox(pf.probLo(), pf.probHi()),
-                                     Geom(lev).Coord(), Geom(lev).isPeriodic());
+    RealBox rb(pf.probLo(), pf.probHi());
+    {
+        ParmParse pp("geometry");
+        pp.addarr("prob_lo", Vector<Real>{AMREX_D_DECL(rb.lo(0),rb.lo(1),rb.lo(2))});
+        pp.addarr("prob_hi", Vector<Real>{AMREX_D_DECL(rb.hi(0),rb.hi(1),rb.hi(2))});
     }
-    amrex::Print() << "GEOMS: " << m_external_geom[0] << "\n"
-                   << Geom(0) << std::endl;
-    // ResetProbDomain(m_external_geom[0].ProbDomain());
-    // TODO: This does not work yet. We need to do this much eariler
+    for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
+        m_impose_geom.emplace_back(pf.probDomain(lev), rb, 0,
+                                   Array<int,AMREX_SPACEDIM>{AMREX_D_DECL(0,0,0)});
+    }
 }
 
 void
@@ -532,6 +527,9 @@ WarpX::ImposeFieldsInPlane ()
 {
     if (!impose_E_field_in_plane || !impose_B_field_in_plane) return;
 
+    AMREX_ALWAYS_ASSERT(boost_direction[0] != 1 && boost_direction[1] != 1);
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(max_level == 0,
+                                     "Imposing field in a plane is not implemented for more than one level");
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(!add_external_E_field && !add_external_B_field,
                                      "Cannot have both add-external-fields and impose-fields-in-plane");
 
@@ -584,7 +582,7 @@ WarpX::ImposeFieldsInPlane ()
     {
         AMREX_ALWAYS_ASSERT(finestLevel() == 0);
         const int zdir = AMREX_SPACEDIM-1;
-        const Real zmax = z_lab_to_boost(m_external_geom[lev].ProbHi(zdir));
+        const Real zmax = z_lab_to_boost(m_impose_geom[lev].ProbHi(zdir));
         const auto ngz = std::max(Efield_fp[lev][0]->nGrowVect()[zdir],
                                   Bfield_fp[lev][0]->nGrowVect()[zdir]);
         const auto zlo  = Geom(lev).ProbLo(zdir);
@@ -593,11 +591,11 @@ WarpX::ImposeFieldsInPlane ()
         const auto izmin = int(std::floor((zmin-zlo)/dz));
         const auto izmax = int(std::floor((zmax-zlo)/dz))+1;
 
-        const auto zlo_ext  = m_external_geom[lev].ProbLo(zdir);
-        const auto dz_ext   = m_external_geom[lev].CellSize(zdir);
+        const auto zlo_ext  = m_impose_geom[lev].ProbLo(zdir);
+        const auto dz_ext   = m_impose_geom[lev].CellSize(zdir);
 
         AMREX_ALWAYS_ASSERT(Geom(lev).Domain().smallEnd(zdir) == 0 &&
-                            m_external_geom[lev].Domain().smallEnd(zdir) == 0);
+                            m_impose_geom[lev].Domain().smallEnd(zdir) == 0);
 
         // Given a cell index, this returns information for interpolation,
         // the lower index in the external field and its weight
