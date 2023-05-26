@@ -538,29 +538,28 @@ WarpX::ImposeFieldsInPlane ()
     if (Efield_fp_external[0][0] == nullptr &&
         Bfield_fp_external[0][0] == nullptr) {
         for (int lev = 0; lev <= finestLevel(); ++lev) {
+            std::string raw_field_path = impose_field_file_path;
+            raw_field_path.append("/raw_fields/Level_")
+                .append(std::to_string(lev)).append("/");
+
             BoxArray ba0;
             DistributionMapping dm0;
-            for (int idim = 0; idim < AMREX_SPACEDIM-1; ++idim) {
-                std::string raw_field_path = impose_field_file_path;
-                raw_field_path.append("/raw_fields/Level_")
-                    .append(std::to_string(lev)).append("/");
 
-                if (impose_E_field_in_plane) {
-                    std::array<std::string,3> Exyz{"Ex_fp","Ey_fp","Ez_fp"};
-                    for (int idim = 0; idim < 3; ++idim) {
-                        Efield_fp_external[lev][idim] = read_raw_field
-                            (ba0, dm0, Efield_fp[lev][idim]->ixType(),
-                             raw_field_path+Exyz[idim]);
-                    }
+            if (impose_E_field_in_plane) {
+                std::array<std::string,3> Exyz{"Ex_fp","Ey_fp","Ez_fp"};
+                for (int idim = 0; idim < 3; ++idim) {
+                    Efield_fp_external[lev][idim] = read_raw_field
+                        (ba0, dm0, Efield_fp[lev][idim]->ixType(),
+                         raw_field_path+Exyz[idim]);
                 }
+            }
 
-                if (impose_B_field_in_plane) {
-                    std::array<std::string,3> Bxyz{"Bx_fp","By_fp","Bz_fp"};
-                    for (int idim = 0; idim < 3; ++idim) {
-                        Bfield_fp_external[lev][idim] = read_raw_field
+            if (impose_B_field_in_plane) {
+                std::array<std::string,3> Bxyz{"Bx_fp","By_fp","Bz_fp"};
+                for (int idim = 0; idim < 3; ++idim) {
+                    Bfield_fp_external[lev][idim] = read_raw_field
                         (ba0, dm0, Bfield_fp[lev][idim]->ixType(),
                          raw_field_path+Bxyz[idim]);
-                    }
                 }
             }
         }
@@ -684,7 +683,7 @@ WarpX::ImposeFieldsInPlane ()
 #endif
             for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
                 Box bx = mfi.tilebox();
-                bx.setBig(zdir, planebox.smallEnd(zdir)-1);
+                bx.setBig(zdir, std::min(bx.bigEnd(zdir),planebox.smallEnd(zdir)-1));
                 if (bx.ok()) {
                     mf[mfi].template setVal<RunOn::Device>(0.0_rt, bx);
                 }
