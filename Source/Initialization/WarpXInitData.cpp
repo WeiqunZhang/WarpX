@@ -693,6 +693,7 @@ WarpX::ImposeFieldsInPlane ()
     const Real ct = PhysConst::c * t;
     const Real gamma = gamma_boost;
     const Real betact = beta_boost * ct;
+    const Real betaoverc = beta_boost / PhysConst::c;
 
     auto z_lab_to_boost = [=] (Real zlab) -> Real
     {
@@ -702,6 +703,11 @@ WarpX::ImposeFieldsInPlane ()
     auto z_boost_to_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
     {
         return gamma * (zboost + betact);
+    };
+
+    auto ct_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
+    {
+        return gamma * (t + betaoverc * zboost);
     };
 
     for (int lev = 0; lev <= finestLevel(); ++lev)
@@ -729,7 +735,7 @@ WarpX::ImposeFieldsInPlane ()
             -> std::pair<int,Real>
         {
             Real z = zlo + (k+0.5_rt)*dz;
-            Real zext = z_boost_to_lab(z) - ct;
+            Real zext = z_boost_to_lab(z) - ct_lab(z);
             int kext = int(std::floor((zext-zlo_ext)/dz_ext));
             Real zcext = zlo_ext + (kext+0.5_rt)*dz_ext;
             if (zcext <= zext) {
@@ -747,7 +753,7 @@ WarpX::ImposeFieldsInPlane ()
             -> std::pair<int,Real>
         {
             Real z = zlo + k*dz;
-            Real zext = z_boost_to_lab(z) - ct;
+            Real zext = z_boost_to_lab(z) - ct_lab(z);
             int kext = int(std::floor((zext-zlo_ext)/dz_ext));
             Real w = 1.0_rt - (zext - (zlo_ext+kext*dz_ext)) / dz_ext;
             w = std::max(std::min(w,1.0_rt),0.0_rt);
