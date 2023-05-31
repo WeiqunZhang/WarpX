@@ -135,6 +135,8 @@ public:
     static inline std::string impose_field_file_path;
     //! Geometry associated with the data for imposing fields in plance
     static inline amrex::Vector<amrex::Geometry> m_impose_geom;
+    static inline amrex::Vector<amrex::Box> m_impose_prob_domain;
+    static inline amrex::RealBox m_impose_real_domain;
 
     //! String storing parser function to initialize x-component of the magnetic field on the grid
     static std::string str_Bx_ext_grid_function;

@@ -643,9 +643,9 @@ WarpX::InitImposeFieldsGeom ()
         pp.addarr("prob_hi", Vector<Real>{AMREX_D_DECL(rb.hi(0),rb.hi(1),rb.hi(2))});
     }
     for (int lev = 0; lev <= pf.finestLevel(); ++lev) {
-        m_impose_geom.emplace_back(pf.probDomain(lev), rb, 0,
-                                   Array<int,AMREX_SPACEDIM>{AMREX_D_DECL(0,0,0)});
+        m_impose_prob_domain.push_back(pf.probDomain(lev));
     }
+    m_impose_real_domain = rb;
 }
 
 void
@@ -662,6 +662,10 @@ WarpX::ImposeFieldsInPlane ()
     if (Efield_fp_external[0][0] == nullptr &&
         Bfield_fp_external[0][0] == nullptr) {
         for (int lev = 0; lev <= finestLevel(); ++lev) {
+            m_impose_geom.emplace_back(m_impose_prob_domain[lev],
+                                       m_impose_real_domain, 0,
+                                       Array<int,AMREX_SPACEDIM>{AMREX_D_DECL(0,0,0)});
+
             std::string raw_field_path = impose_field_file_path;
             raw_field_path.append("/raw_fields/Level_")
                 .append(std::to_string(lev)).append("/");
