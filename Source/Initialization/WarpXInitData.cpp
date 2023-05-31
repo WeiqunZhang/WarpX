@@ -551,6 +551,8 @@ namespace
     }
 
     // mf = c1*mfext1 + c2*mfext2
+    // mfext1 has the same index type as mf.
+    // mfext2 has a different index type in the boosted direction.
     template <typename ND, typename CC>
     void impose_field_boost (MultiFab& mf,
                              MultiFab const& mfext1, Real c1,
@@ -564,13 +566,16 @@ namespace
         const int zdir = AMREX_SPACEDIM-1;
         auto typ1 = mfext1.ixType();
         auto typ2 = mfext2.ixType();
-        bool is_nodal_1 = typ1.nodeCentered(zdir);
-        bool is_nodal_2 = typ2.nodeCentered(zdir);
-        AMREX_ALWAYS_ASSERT(is_nodal_1 != is_nodal_2);
-#if 0
-        MultiFab mf_src(amrex::convert(baext,typ), dmext, 1, 0);
-        mf_src.setVal(0.0_rt);
-        mf_src.ParallelCopy(mf_ext, 0, 0, 1);
+        typ2.flip(zdir);
+        AMREX_ALWAYS_ASSERT(typ1 == typ2);
+        typ2.flip(zdir);
+        bool is_nodal = typ1.nodeCentered(zdir);
+        MultiFab mfsrc1(amrex::convert(baext,typ1), dmext, 1, 0);
+        mfsrc1.setVal(0.0_rt);
+        mfsrc1.ParallelCopy(mfext1, 0, 0, 1);
+        MultiFab mfsrc2(amrex::convert(baext,typ2), dmext, 1, 0);
+        mfsrc2.setVal(0.0_rt);
+        mfsrc2.ParallelCopy(mfext2, 0, 0, 1);
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (Gpu::notInLaunchRegion())
 #endif
@@ -581,26 +586,49 @@ namespace
                 mf[mfi].template setVal<RunOn::Device>(0.0_rt, bx);
             }
 
-            bx = mfi.tilebox() & amrex::convert(planebox,typ);
+            bx = mfi.tilebox() & amrex::convert(planebox,typ1);
             if (bx.ok()) {
                 auto const& dst = mf.array(mfi);
-                auto const& src = mf_src.array(index_map.at(mfi.index()));
+                auto const idx = index_map.at(mfi.index());
+                auto const& src1 = mfsrc1.array(idx);
+                auto const& src2 = mfsrc2.array(idx);
                 AMREX_ALWAYS_ASSERT(AMREX_SPACEDIM > 1);
                 amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                 {
 #if (AMREX_SPACEDIM == 2)
-                    auto [jj,w] = is_nodal ? nd_interp_info(j)
-                                           : cc_interp_info(j);
-                    dst(i,j,k) = src(i,jj,k)*w + src(i,jj+1,k)*(1.0_rt-w);
+                    auto [jj1,w1] = is_nodal ? nd_interp_info(j)
+                                             : cc_interp_info(j);
+                    auto v1 = src1(i,jj1,k)*w1 + src1(i,jj1+1,k)*(1.0_rt-w1);
+                    auto [jj2a,w2a] = is_nodal ? cc_interp_info(j-1)
+                                               : nd_interp_info(j-1);
+                    auto [jj2b,w2b] = is_nodal ? cc_interp_info(j)
+                                               : nd_interp_info(j);
+                    // interpolation first, then averaging due to index types
+                    auto v2 = 0.5_rt*(src2(i,jj2a  ,k)*        w2a  +
+                                      src2(i,jj2a+1,k)*(1.0_rt-w2a) +
+                                      src2(i,jj2b  ,k)*        w2b  +
+                                      src2(i,jj2b+1,k)*(1.0_rt-w2b));
+                    // Lorentz transformation
+                    dst(i,j,k) = v1*c1 + v2*c2;
 #else
-                    auto [kk,w] = is_nodal ? nd_interp_info(k)
-                                           : cc_interp_info(k);
-                    dst(i,j,k) = src(i,j,kk)*w + src(i,j,kk+1)*(1.0_rt-w);
+                    auto [kk1,w1] = is_nodal ? nd_interp_info(k)
+                                             : cc_interp_info(k);
+                    auto v1 = src1(i,j,kk1)*w1 + src1(i,j,kk1+1)*(1.0_rt-w1);
+                    auto [kk2a,w2a] = is_nodal ? cc_interp_info(k-1)
+                                               : nd_interp_info(k-1);
+                    auto [kk2b,w2b] = is_nodal ? cc_interp_info(k)
+                                               : nd_interp_info(k);
+                    // interpolation first, then averaging due to index types
+                    auto v2 = 0.5_rt*(src2(i,j,kk2a  )*        w2a  +
+                                      src2(i,j,kk2a+1)*(1.0_rt-w2a) +
+                                      src2(i,j,kk2b  )*        w2b  +
+                                      src2(i,j,kk2b+1)*(1.0_rt-w2b));
+                    // Lorentz transformation
+                    dst(i,j,k) = v1*c1 + v2*c2;
 #endif
                 });
             }
         }
-#endif
     }
 }
 
