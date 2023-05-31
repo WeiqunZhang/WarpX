@@ -504,6 +504,51 @@ namespace
             return mf;
         }
     }
+
+    template <typename ND, typename CC>
+    void impose_field_direct (MultiFab& mf, MultiFab const& mf_ext,
+                              BoxArray const& baext,
+                              DistributionMapping const& dmext,
+                              Box const& planebox,
+                              std::map<int,int> const& index_map,
+                              ND const& nd_interp_info, CC const& cc_interp_info)
+    {
+        auto typ = mf.ixType();
+        const int zdir = AMREX_SPACEDIM-1;
+        bool is_nodal = typ.nodeCentered(zdir);
+        MultiFab mf_src(amrex::convert(baext,typ), dmext, 1, 0);
+        mf_src.setVal(0.0_rt);
+        mf_src.ParallelCopy(mf_ext, 0, 0, 1);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+        for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            Box bx = mfi.tilebox();
+            bx.setBig(zdir, std::min(bx.bigEnd(zdir),planebox.smallEnd(zdir)-1));
+            if (bx.ok()) {
+                mf[mfi].template setVal<RunOn::Device>(0.0_rt, bx);
+            }
+
+            bx = mfi.tilebox() & amrex::convert(planebox,typ);
+            if (bx.ok()) {
+                auto const& dst = mf.array(mfi);
+                auto const& src = mf_src.array(index_map.at(mfi.index()));
+                AMREX_ALWAYS_ASSERT(AMREX_SPACEDIM > 1);
+                amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                {
+#if (AMREX_SPACEDIM == 2)
+                    auto [jj,w] = is_nodal ? nd_interp_info(j)
+                                           : cc_interp_info(j);
+                    dst(i,j,k) = src(i,jj,k)*w + src(i,jj+1,k)*(1.0_rt-w);
+#else
+                    auto [kk,w] = is_nodal ? nd_interp_info(k)
+                                           : cc_interp_info(k);
+                    dst(i,j,k) = src(i,j,kk)*w + src(i,j,kk+1)*(1.0_rt-w);
+#endif
+                });
+            }
+        }
+    }
 }
 
 void
@@ -646,8 +691,9 @@ WarpX::ImposeFieldsInPlane ()
         for (int ibox = 0; ibox < nboxes; ++ibox) {
             Box b = ba[ibox] & planebox;
             if (b.ok()) {
-                auto cclo = cc_interp_info(b.smallEnd(zdir));
-                auto cchi = cc_interp_info(b.bigEnd(zdir)-1);
+                int nextra = (beta_boost == 0.0_rt) ? 0 : 1;
+                auto cclo = cc_interp_info(b.smallEnd(zdir)-nextra);
+                auto cchi = cc_interp_info(b.bigEnd(zdir)-1+nextra);
                 auto ndlo = nd_interp_info(b.smallEnd(zdir));
                 auto ndhi = nd_interp_info(b.bigEnd(zdir));
                 b.setSmall(zdir, std::min(cclo.first  ,ndlo.first  ));
@@ -668,51 +714,43 @@ WarpX::ImposeFieldsInPlane ()
         BoxArray baext(std::move(bl));
         DistributionMapping dmext(std::move(procmap));
 
-        // TODO: boosted frame
-        auto impose_field = [&] (MultiFab& mf, MultiFab const& mf_ext)
-        {
-            auto typ = mf.ixType();
-            bool is_nodal = typ.nodeCentered(zdir);
-            MultiFab mf_src(amrex::convert(baext,typ), dmext, 1, 0);
-            mf_src.setVal(0.0_rt);
-            mf_src.ParallelCopy(mf_ext, 0, 0, 1);
-#ifdef AMREX_USE_OMP
-#pragma omp parallel if (Gpu::notInLaunchRegion())
-#endif
-            for (MFIter mfi(mf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-                Box bx = mfi.tilebox();
-                bx.setBig(zdir, std::min(bx.bigEnd(zdir),planebox.smallEnd(zdir)-1));
-                if (bx.ok()) {
-                    mf[mfi].template setVal<RunOn::Device>(0.0_rt, bx);
-                }
+        if (beta_boost != 0.0_rt) {
+            AMREX_ALWAYS_ASSERT(impose_E_field_in_plane && impose_B_field_in_plane);
+        }
 
-                bx = mfi.tilebox() & amrex::convert(planebox,typ);
-                if (bx.ok()) {
-                    auto const& dst = mf.array(mfi);
-                    auto const& src = mf_src.array(index_map[mfi.index()]);
-                    AMREX_ALWAYS_ASSERT(AMREX_SPACEDIM > 1);
-                    amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-                    {
-#if (AMREX_SPACEDIM == 2)
-                        auto [jj,w] = is_nodal ? nd_interp_info(j)
-                                               : cc_interp_info(j);
-                        dst(i,j,k) = src(i,jj,k)*w + src(i,jj+1,k)*(1.0_rt-w);
-#else
-                        auto [kk,w] = is_nodal ? nd_interp_info(k)
-                                               : cc_interp_info(k);
-                        dst(i,j,k) = src(i,j,kk)*w + src(i,j,kk+1)*(1.0_rt-w);
-#endif
-                    });
+        if (impose_E_field_in_plane) {
+            if (beta_boost == 0.0_rt) {
+                for (int idim = 0; idim < 3; ++idim) {
+                    impose_field_direct(*Efield_fp         [lev][idim],
+                                        *Efield_fp_external[lev][idim],
+                                        baext, dmext, planebox, index_map,
+                                        nd_interp_info, cc_interp_info);
                 }
+            } else {
+                //impose_Ex();
+                //impose_Ey();
+                impose_field_direct(*Efield_fp         [lev][2],
+                                    *Efield_fp_external[lev][2],
+                                    baext, dmext, planebox, index_map,
+                                    nd_interp_info, cc_interp_info);
             }
-        };
+        }
 
-        for (int idim = 0; idim < 3; ++idim) {
-            if (impose_E_field_in_plane) {
-                impose_field(*Efield_fp[lev][idim], *Efield_fp_external[lev][idim]);
-            }
-            if (impose_B_field_in_plane) {
-               impose_field(*Bfield_fp[lev][idim], *Bfield_fp_external[lev][idim]);
+        if (impose_B_field_in_plane) {
+            if (beta_boost == 0.0_rt) {
+                for (int idim = 0; idim < 3; ++idim) {
+                    impose_field_direct(*Bfield_fp         [lev][idim],
+                                        *Bfield_fp_external[lev][idim],
+                                        baext, dmext, planebox, index_map,
+                                        nd_interp_info, cc_interp_info);
+                }
+            } else {
+                //impose_Bx();
+                //impose_By();
+                impose_field_direct(*Bfield_fp         [lev][2],
+                                    *Bfield_fp_external[lev][2],
+                                    baext, dmext, planebox, index_map,
+                                    nd_interp_info, cc_interp_info);
             }
         }
     }
