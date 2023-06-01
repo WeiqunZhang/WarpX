@@ -684,9 +684,9 @@ WarpX::ImposeFieldsInPlane ()
 
     const Real t = t_new[0]; // + WarpX::m_t_boost_offset;
     const Real ct = PhysConst::c * t;
+    const Real beta = beta_boost;
     const Real gamma = gamma_boost;
     const Real betact = beta_boost * ct;
-    const Real betaoverc = beta_boost / PhysConst::c;
 
     auto z_lab_to_boost = [=] (Real zlab) -> Real
     {
@@ -700,7 +700,7 @@ WarpX::ImposeFieldsInPlane ()
 
     auto ct_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
     {
-        return gamma * (t + betaoverc * zboost);
+        return gamma * (ct + beta * zboost);
     };
 
     for (int lev = 0; lev <= finestLevel(); ++lev)
