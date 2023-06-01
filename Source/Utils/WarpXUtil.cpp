@@ -203,31 +203,32 @@ void ConvertLabParamsToBoost()
     Vector<int> dim_map {2};
 #endif
 
-#if 0
-    for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
-    {
-        if (boost_direction[dim_map[idim]]) {
-            amrex::Real convert_factor;
-            // Assume that the window travels with speed +c
-            convert_factor = 1._rt/( gamma_boost * ( 1 - beta_boost ) );
-            prob_lo[idim] *= convert_factor;
-            prob_hi[idim] *= convert_factor;
-            if (max_level > 0){
-              fine_tag_lo[idim] *= convert_factor;
-              fine_tag_hi[idim] *= convert_factor;
+    if (WarpX::impose_B_field_in_plane || WarpX::impose_E_field_in_plane) {
+        int const zdir = AMREX_SPACEDIM-1;
+        Real zmin = prob_lo[zdir];
+        Real zmax = prob_hi[zdir];
+        prob_hi[zdir] = gamma_boost * zmax;
+        prob_lo[zdir] = prob_hi[zdir] - gamma_boost*(1._rt+beta_boost)*(zmax-zmin);
+        WarpX::m_t_boost_offset = -gamma_boost*beta_boost*zmax/PhysConst::c;
+    } else {
+        for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
+        {
+            if (boost_direction[dim_map[idim]]) {
+                amrex::Real convert_factor;
+                // Assume that the window travels with speed +c
+                convert_factor = 1._rt/( gamma_boost * ( 1 - beta_boost ) );
+                prob_lo[idim] *= convert_factor;
+                prob_hi[idim] *= convert_factor;
+                if (max_level > 0){
+                    fine_tag_lo[idim] *= convert_factor;
+                    fine_tag_hi[idim] *= convert_factor;
+                }
+                slice_lo[idim] *= convert_factor;
+                slice_hi[idim] *= convert_factor;
+                break;
             }
-            slice_lo[idim] *= convert_factor;
-            slice_hi[idim] *= convert_factor;
-            break;
         }
     }
-#else
-    Real zmin = prob_lo[1];
-    Real zmax = prob_hi[1];
-    prob_hi[1] = gamma_boost * (zmax);
-    prob_lo[1] = prob_hi[1] - gamma_boost*(1._rt+beta_boost)*(zmax-zmin);
-    WarpX::m_t_boost_offset = -gamma_boost*beta_boost*zmax/PhysConst::c;
-#endif
 
     pp_geometry.addarr("prob_lo", prob_lo);
     pp_geometry.addarr("prob_hi", prob_hi);

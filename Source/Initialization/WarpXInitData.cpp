@@ -682,7 +682,7 @@ WarpX::ImposeFieldsInPlane ()
         }
     }
 
-    const Real t = t_new[0]; // + WarpX::m_t_boost_offset;
+    const Real t = t_new[0];
     const Real ct = PhysConst::c * t;
     const Real beta = beta_boost;
     const Real gamma = gamma_boost;
