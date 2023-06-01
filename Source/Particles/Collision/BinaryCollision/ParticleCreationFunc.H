@@ -206,19 +206,11 @@ public:
                 // setting its id to -1
                 if (w1[p_pair_indices_1[i]] <= amrex::ParticleReal(0.))
                 {
-                    //particle_ptr_1[p_pair_indices_1[i]].atomicSetID(minus_one_long); // TODO
-                    // or?
-                    //soa_1.m_idata[PIdxInt::id] = -1;
-                    // or?
-                    particle_ptr_1->id() = -1;
+                    amrex::Gpu::Atomic::Exch(&particle_ptr_1->id(), -1);
                 }
                 if (w2[p_pair_indices_2[i]] <= amrex::ParticleReal(0.))
                 {
-                    //particle_ptr_2[p_pair_indices_2[i]].atomicSetID(minus_one_long); // TODO
-                    // or?
-                    //soa_2.m_idata[PIdxInt::id] = -1;
-                    // or?
-                    particle_ptr_2->id() = -1;
+                    amrex::Gpu::Atomic::Exch(&particle_ptr_2->id(), -1);
                 }
 
                 // Initialize the product particles' momentum, using a function depending on the

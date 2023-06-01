@@ -1341,7 +1341,7 @@ void WarpXParticleContainer::defineAllParticleTiles () noexcept
 
 // This function is called in Redistribute, just after locate
 void
-WarpXParticleContainer::particlePostLocate(ParticleType& p, // TODO
+WarpXParticleContainer::particlePostLocate(ParticleType& p,
                                            const ParticleLocData& pld,
                                            const int lev)
 {
@@ -1350,11 +1350,10 @@ WarpXParticleContainer::particlePostLocate(ParticleType& p, // TODO
     // Tag particle if goes to higher level.
     // It will be split later in the loop
     if (pld.m_lev == lev+1
-        and p.id() != NoSplitParticleID
+        and p.id() != amrex::IntParticleIds::NoSplitParticleID
         and p.id() >= 0)
     {
-        // warning: overflow in conversion from 'long int' to 'int' changes value from '549755813884' to '-4' [-Woverflow]
-        p.id() = DoSplitParticleID; // TODO
+        p.id() = amrex::IntParticleIds::DoSplitParticleID;
     }
 
     if (pld.m_lev == lev-1){

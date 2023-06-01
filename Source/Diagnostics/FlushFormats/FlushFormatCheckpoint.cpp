@@ -200,9 +200,8 @@ FlushFormatCheckpoint::CheckpointParticles (
         auto runtime_inames = pc->getParticleRuntimeiComps();
         for (auto const& x : runtime_inames) { int_names[x.second+0] = x.first; }
 
-        // TODO
-        //pc->Checkpoint(dir, part_diag.getSpeciesName(), true,
-        //               real_names, int_names);
+        pc->Checkpoint(dir, part_diag.getSpeciesName(), true,
+                       real_names, int_names);
     }
 }
 

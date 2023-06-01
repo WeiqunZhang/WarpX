@@ -29,8 +29,7 @@ struct Absorb {
                      const amrex::RealVect& /*pos*/, const amrex::RealVect& /*normal*/,
                      amrex::RandomEngine const& /*engine*/) const noexcept
     {
-        //ptd.id(i) = -ptd.id(i);  // FIXME: in AMReX - why does that not work?
-        ptd.m_idata[0][i] = -ptd.id(i);
+        ptd.id(i) = -ptd.id(i);
     }
 };
 }

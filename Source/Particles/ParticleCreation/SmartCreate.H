@@ -47,20 +47,20 @@ struct SmartCreate
         const int id = 0) const noexcept
     {
 #if defined(WARPX_DIM_3D)
-        prt.m_rdata[0][i_prt] = x;
-        prt.m_rdata[1][i_prt] = y;
-        prt.m_rdata[2][i_prt] = z;
+        prt.m_rdata[PIdx::x][i_prt] = x;
+        prt.m_rdata[PIdx::y][i_prt] = y;
+        prt.m_rdata[PIdx::z][i_prt] = z;
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-        prt.m_rdata[0][i_prt] = x;
-        prt.m_rdata[1][i_prt] = z;
+        prt.m_rdata[PIdx::x][i_prt] = x;
+        prt.m_rdata[PIdx::z][i_prt] = z;
         amrex::ignore_unused(y);
 #else
-        prt.m_rdata[0][i_prt] = z;
+        prt.m_rdata[PIdx::z][i_prt] = z;
         amrex::ignore_unused(x,y);
 #endif
 
-        prt.m_idata[0][i_prt] = id;
-        prt.m_idata[1][i_prt] = cpu; // TODO double check me
+        prt.m_idata[PIdxInt::id][i_prt] = id;
+        prt.m_idata[PIdxInt::cpu][i_prt] = cpu; // TODO double check me
 
         // initialize the real components after position
         for (int j = AMREX_SPACEDIM; j < PartData::NAR; ++j)

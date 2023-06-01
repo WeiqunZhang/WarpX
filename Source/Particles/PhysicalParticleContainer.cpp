@@ -1059,7 +1059,7 @@ PhysicalParticleContainer::AddPlasma (int lev, RealBox part_realbox)
         int max_new_particles = Scan::ExclusiveSum(counts.size(), counts.data(), offset.data());
 
         // Update NextID to include particles created in this function
-        Long pid;
+        int pid;
 #ifdef AMREX_USE_OMP
 #pragma omp critical (add_plasma_nextid)
 #endif
@@ -1068,7 +1068,7 @@ PhysicalParticleContainer::AddPlasma (int lev, RealBox part_realbox)
             ParticleType::NextID(pid+max_new_particles);
         }
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
-            static_cast<Long>(pid + max_new_particles) < LastParticleID,
+            static_cast<int>(pid + max_new_particles) < IntParticleIds::LastParticleID,
             "ERROR: overflow on particle id numbers");
 
         const int cpuid = ParallelDescriptor::MyProc();
@@ -1615,7 +1615,7 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
         int max_new_particles = Scan::ExclusiveSum(counts.size(), counts.data(), offset.data());
 
         // Update NextID to include particles created in this function
-        Long pid;
+        int pid;
 #ifdef AMREX_USE_OMP
 #pragma omp critical (add_plasma_nextid)
 #endif
@@ -1624,7 +1624,7 @@ PhysicalParticleContainer::AddPlasmaFlux (amrex::Real dt)
             ParticleType::NextID(pid+max_new_particles);
         }
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
-            static_cast<Long>(pid + max_new_particles) < LastParticleID,
+            static_cast<int>(pid + max_new_particles) < IntParticleIds::LastParticleID,
             "overflow on particle id numbers");
 
         const int cpuid = ParallelDescriptor::MyProc();
@@ -2307,7 +2307,7 @@ PhysicalParticleContainer::SplitParticles (int lev)
             ParticleReal xp, yp, zp;
             GetPosition(i, xp, yp, zp);
             auto& p = particles[i];
-            if (p.id() == DoSplitParticleID){
+            if (p.id() == IntParticleIds::DoSplitParticleID){
                 // If particle is tagged, split it and put the
                 // split particles in local arrays psplit_x etc.
                 np_split_to_add += np_split;
@@ -2433,7 +2433,7 @@ PhysicalParticleContainer::SplitParticles (int lev)
                               1,
                               psplit_w.dataPtr(),
                               0, nullptr,
-                              1, NoSplitParticleID);
+                              1, IntParticleIds::NoSplitParticleID);
     // Copy particles from tmp to current particle container
     addParticles(pctmp_split,1);
     // Clear tmp container

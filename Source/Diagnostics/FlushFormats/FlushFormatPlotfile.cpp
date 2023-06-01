@@ -406,11 +406,10 @@ FlushFormatPlotfile::WriteParticles(const std::string& dir,
         }
         // real_names contains a list of all particle attributes.
         // real_flags & int_flags are 1 or 0, whether quantity is dumped or not.
-        // TODO
-        //tmp.WritePlotFile(
-        //    dir, part_diag.getSpeciesName(),
-        //    real_flags, int_flags,
-        //    real_names, int_names);
+        tmp.WritePlotFile(
+            dir, part_diag.getSpeciesName(),
+            real_flags, int_flags,
+            real_names, int_names);
     }
 }
 

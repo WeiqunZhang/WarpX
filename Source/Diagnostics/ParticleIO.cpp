@@ -206,10 +206,10 @@ MultiParticleContainer::Restart (const std::string& dir)
             }
         }
 
-        //pc->Restart(dir, species_names.at(i)); // TODO
+        pc->Restart(dir, species_names.at(i));
     }
     for (unsigned i = species_names.size(); i < species_names.size()+lasers_names.size(); ++i) {
-        //allcontainers.at(i)->Restart(dir, lasers_names.at(i-species_names.size())); // TODO
+        allcontainers.at(i)->Restart(dir, lasers_names.at(i-species_names.size()));
     }
 }
 
