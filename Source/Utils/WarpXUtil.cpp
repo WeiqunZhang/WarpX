@@ -203,6 +203,7 @@ void ConvertLabParamsToBoost()
     Vector<int> dim_map {2};
 #endif
 
+#if 0
     for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
     {
         if (boost_direction[dim_map[idim]]) {
@@ -220,6 +221,13 @@ void ConvertLabParamsToBoost()
             break;
         }
     }
+#else
+    Real zmin = prob_lo[1];
+    Real zmax = prob_hi[1];
+    prob_hi[1] = gamma_boost * (zmax);
+    prob_lo[1] = prob_hi[1] - gamma_boost*(1._rt+beta_boost)*(zmax-zmin);
+    WarpX::m_t_boost_offset = -gamma_boost*beta_boost*zmax/PhysConst::c;
+#endif
 
     pp_geometry.addarr("prob_lo", prob_lo);
     pp_geometry.addarr("prob_hi", prob_hi);

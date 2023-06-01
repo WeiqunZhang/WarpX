@@ -553,7 +553,7 @@ namespace
     // mf = c1*mfext1 + c2*mfext2
     // mfext1 has the same index type as mf.
     // mfext2 has a different index type in the boosted direction.
-    template <typename ND, typename CC>
+    template <typename ND, typename CC, typename N2C, typename C2N>
     void impose_field_boost (MultiFab& mf,
                              MultiFab const& mfext1, Real c1,
                              MultiFab const& mfext2, Real c2,
@@ -561,7 +561,8 @@ namespace
                              DistributionMapping const& dmext,
                              Box const& planebox,
                              std::map<int,int> const& index_map,
-                             ND const& nd_interp_info, CC const& cc_interp_info)
+                             ND const& nd_interp_info, CC const& cc_interp_info,
+                             N2C const& nd2cc_interp_info, C2N const& cc2nd_interp_info)
     {
         const int zdir = AMREX_SPACEDIM-1;
         auto typ1 = mfext1.ixType();
@@ -599,30 +600,18 @@ namespace
                     auto [jj1,w1] = is_nodal ? nd_interp_info(j)
                                              : cc_interp_info(j);
                     auto v1 = src1(i,jj1,k)*w1 + src1(i,jj1+1,k)*(1.0_rt-w1);
-                    auto [jj2a,w2a] = is_nodal ? cc_interp_info(j-1)
-                                               : nd_interp_info(j-1);
-                    auto [jj2b,w2b] = is_nodal ? cc_interp_info(j)
-                                               : nd_interp_info(j);
-                    // interpolation first, then averaging due to index types
-                    auto v2 = 0.5_rt*(src2(i,jj2a  ,k)*        w2a  +
-                                      src2(i,jj2a+1,k)*(1.0_rt-w2a) +
-                                      src2(i,jj2b  ,k)*        w2b  +
-                                      src2(i,jj2b+1,k)*(1.0_rt-w2b));
+                    auto [jj2,w2] = is_nodal ? cc2nd_interp_info(j)
+                                             : nd2cc_interp_info(j);
+                    auto v2 = src2(i,jj2,k)*w2 + src2(i,jj2+1,k)*(1.0_rt-w2);
                     // Lorentz transformation
                     dst(i,j,k) = v1*c1 + v2*c2;
 #else
                     auto [kk1,w1] = is_nodal ? nd_interp_info(k)
                                              : cc_interp_info(k);
                     auto v1 = src1(i,j,kk1)*w1 + src1(i,j,kk1+1)*(1.0_rt-w1);
-                    auto [kk2a,w2a] = is_nodal ? cc_interp_info(k-1)
-                                               : nd_interp_info(k-1);
-                    auto [kk2b,w2b] = is_nodal ? cc_interp_info(k)
-                                               : nd_interp_info(k);
-                    // interpolation first, then averaging due to index types
-                    auto v2 = 0.5_rt*(src2(i,j,kk2a  )*        w2a  +
-                                      src2(i,j,kk2a+1)*(1.0_rt-w2a) +
-                                      src2(i,j,kk2b  )*        w2b  +
-                                      src2(i,j,kk2b+1)*(1.0_rt-w2b));
+                    auto [kk2,w2] = is_nodal ? cc2nd_interp_info(k)
+                                             : nd2cc_interp_info(k);
+                    auto v2 = src2(i,j,kk2)*w2 + src2(i,j,kk2+1)*(1.0_rt-w2);
                     // Lorentz transformation
                     dst(i,j,k) = v1*c1 + v2*c2;
 #endif
@@ -693,7 +682,7 @@ WarpX::ImposeFieldsInPlane ()
         }
     }
 
-    const Real t = t_new[0];
+    const Real t = t_new[0]; // + WarpX::m_t_boost_offset;
     const Real ct = PhysConst::c * t;
     const Real gamma = gamma_boost;
     const Real betact = beta_boost * ct;
@@ -764,6 +753,34 @@ WarpX::ImposeFieldsInPlane ()
             return {kext, w};
         };
 
+        // In boosted frame, we need to interpolate from cc to nd and nd to cc.
+        auto nd2cc_interp_info = [=] AMREX_GPU_HOST_DEVICE (int k) // k is cc
+            -> std::pair<int,Real>
+        {
+            Real z = zlo + (k+0.5_rt)*dz;
+            Real zext = z_boost_to_lab(z) - ct_lab(z);
+            int kext = int(std::floor((zext-zlo_ext)/dz_ext));
+            Real w = 1.0_rt - (zext - (zlo_ext+kext*dz_ext)) / dz_ext;
+            w = std::max(std::min(w,1.0_rt),0.0_rt);
+            return {kext, w};
+        };
+
+        auto cc2nd_interp_info = [=] AMREX_GPU_HOST_DEVICE (int k) // k is nd
+            -> std::pair<int,Real>
+        {
+            Real z = zlo + k*dz;
+            Real zext = z_boost_to_lab(z) - ct_lab(z);
+            int kext = int(std::floor((zext-zlo_ext)/dz_ext));
+            Real zcext = zlo_ext + (kext+0.5_rt)*dz_ext;
+            if (zcext <= zext) {
+                Real w = std::max(1.0_rt - (zext-zcext)/dz_ext, 0.0_rt);
+                return {kext, w};
+            } else {
+                Real w = std::min((zcext-zext)/dz_ext, 1.0_rt);
+                return {kext-1, w};
+            }
+        };
+
         Box planebox = Geom(lev).Domain();
         planebox.surroundingNodes(zdir).setSmall(zdir, izmin).setBig(zdir, izmax);
 
@@ -782,13 +799,22 @@ WarpX::ImposeFieldsInPlane ()
         for (int ibox = 0; ibox < nboxes; ++ibox) {
             Box b = ba[ibox] & planebox;
             if (b.ok()) {
-                int nextra = (beta_boost == 0.0_rt) ? 0 : 1;
-                auto cclo = cc_interp_info(b.smallEnd(zdir)-nextra);
-                auto cchi = cc_interp_info(b.bigEnd(zdir)-1+nextra);
+                auto cclo = cc_interp_info(b.smallEnd(zdir));
+                auto cchi = cc_interp_info(b.bigEnd(zdir)-1);
                 auto ndlo = nd_interp_info(b.smallEnd(zdir));
                 auto ndhi = nd_interp_info(b.bigEnd(zdir));
-                b.setSmall(zdir, std::min(cclo.first  ,ndlo.first  ));
-                b.setBig  (zdir, std::max(cchi.first+2,ndhi.first+1));
+                int lo = std::min(cclo.first  ,ndlo.first  );
+                int hi = std::max(cchi.first+2,ndhi.first+1);
+                if (beta_boost != 1.0_rt) {
+                    cclo = cc2nd_interp_info(b.smallEnd(zdir));
+                    cchi = cc2nd_interp_info(b.bigEnd(zdir));
+                    ndlo = nd2cc_interp_info(b.smallEnd(zdir));
+                    ndhi = nd2cc_interp_info(b.bigEnd(zdir)-1);
+                    lo = std::min({lo, cclo.first  , ndlo.first  });
+                    hi = std::max({hi, cchi.first+2, ndhi.first+1});
+                }
+                b.setSmall(zdir,lo);
+                b.setBig  (zdir,hi);
                 bl.push_back(b);
                 procmap.push_back(dm[ibox]);
                 index_map[ibox] = bl.size() - 1;
@@ -824,7 +850,8 @@ WarpX::ImposeFieldsInPlane ()
                                    *Bfield_fp_external[lev][1],
                                    -gamma_boost*beta_boost*PhysConst::c,
                                    baext, dmext, planebox, index_map,
-                                   nd_interp_info, cc_interp_info);
+                                   nd_interp_info, cc_interp_info,
+                                   nd2cc_interp_info, cc2nd_interp_info);
 
                 impose_field_boost(*Efield_fp         [lev][1],
                                    *Efield_fp_external[lev][1],
@@ -832,7 +859,8 @@ WarpX::ImposeFieldsInPlane ()
                                    *Bfield_fp_external[lev][0],
                                    gamma_boost*beta_boost*PhysConst::c,
                                    baext, dmext, planebox, index_map,
-                                   nd_interp_info, cc_interp_info);
+                                   nd_interp_info, cc_interp_info,
+                                   nd2cc_interp_info, cc2nd_interp_info);
 
                 impose_field_direct(*Efield_fp         [lev][2],
                                     *Efield_fp_external[lev][2],
@@ -856,7 +884,8 @@ WarpX::ImposeFieldsInPlane ()
                                    *Efield_fp_external[lev][1],
                                    gamma_boost*beta_boost/PhysConst::c,
                                    baext, dmext, planebox, index_map,
-                                   nd_interp_info, cc_interp_info);
+                                   nd_interp_info, cc_interp_info,
+                                   nd2cc_interp_info, cc2nd_interp_info);
 
                 impose_field_boost(*Bfield_fp         [lev][1],
                                    *Bfield_fp_external[lev][1],
@@ -864,7 +893,8 @@ WarpX::ImposeFieldsInPlane ()
                                    *Efield_fp_external[lev][0],
                                    -gamma_boost*beta_boost/PhysConst::c,
                                    baext, dmext, planebox, index_map,
-                                   nd_interp_info, cc_interp_info);
+                                   nd_interp_info, cc_interp_info,
+                                   nd2cc_interp_info, cc2nd_interp_info);
 
                 impose_field_direct(*Bfield_fp         [lev][2],
                                     *Bfield_fp_external[lev][2],
