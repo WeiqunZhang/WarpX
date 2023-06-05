@@ -635,6 +635,7 @@ WarpX::InitImposeFieldsGeom ()
         m_impose_prob_domain.push_back(pf.probDomain(lev));
     }
     m_impose_real_domain = rb;
+    m_impose_t_lab = pf.time();
 }
 
 void
@@ -698,9 +699,10 @@ WarpX::ImposeFieldsInPlane ()
         return gamma * (zboost + betact);
     };
 
+    const Real ct_impose = PhysConst::c * m_impose_t_lab;
     auto ct_lab = [=] AMREX_GPU_HOST_DEVICE (Real zboost) -> Real
     {
-        return gamma * (ct + beta * zboost);
+        return gamma * (ct + beta * zboost) - ct_impose;
     };
 
     for (int lev = 0; lev <= finestLevel(); ++lev)

@@ -137,6 +137,7 @@ public:
     static inline amrex::Vector<amrex::Geometry> m_impose_geom;
     static inline amrex::Vector<amrex::Box> m_impose_prob_domain;
     static inline amrex::RealBox m_impose_real_domain;
+    static inline amrex::Real m_impose_t_lab = 0.0_rt;
     static inline amrex::Real m_t_boost_offset = 0.0_rt;
 
     //! String storing parser function to initialize x-component of the magnetic field on the grid

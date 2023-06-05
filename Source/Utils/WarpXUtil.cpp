@@ -207,9 +207,9 @@ void ConvertLabParamsToBoost()
         int const zdir = AMREX_SPACEDIM-1;
         Real zmin = prob_lo[zdir];
         Real zmax = prob_hi[zdir];
-        prob_hi[zdir] = gamma_boost * zmax;
+        prob_hi[zdir] = gamma_boost * (zmax - beta_boost*PhysConst::c*WarpX::m_impose_t_lab);
         prob_lo[zdir] = prob_hi[zdir] - gamma_boost*(1._rt+beta_boost)*(zmax-zmin);
-        WarpX::m_t_boost_offset = -gamma_boost*beta_boost*zmax/PhysConst::c;
+        WarpX::m_t_boost_offset = gamma_boost*(WarpX::m_impose_t_lab-beta_boost*zmax/PhysConst::c);
     } else {
         for (int idim = 0; idim < AMREX_SPACEDIM; ++idim)
         {
