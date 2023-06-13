@@ -274,11 +274,10 @@ functions.
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_count
 
-.. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_structs
 
 .. autofunction:: pywarpx.picmi.Simulation.extension.get_particle_arrays
 
-The ``get_particle_structs()`` and ``get_particle_arrays()`` functions are called
+The ``get_particle_arrays()`` function is called
 by several utility functions of the form ``get_particle_{comp_name}`` where
 ``comp_name`` is one of ``x``, ``y``, ``z``, ``r``, ``theta``, ``id``, ``cpu``,
 ``weight``, ``ux``, ``uy`` or ``uz``.

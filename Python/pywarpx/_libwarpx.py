@@ -151,11 +151,7 @@ class LibWarpX():
         _numpy_to_ctypes[self._numpy_particlereal_dtype] = c_particlereal
         _numpy_to_ctypes['u8'] = ctypes.c_uint64
 
-        class Particle(ctypes.Structure):
-            _fields_ = [(v[0], _numpy_to_ctypes[v[1]]) for v in _p_struct]
-
         # some useful typenames
-        _LP_particle_p = ctypes.POINTER(ctypes.POINTER(Particle))
         _LP_LP_c_int = ctypes.POINTER(_LP_c_int)
         #_LP_c_void_p = ctypes.POINTER(ctypes.c_void_p)
         _LP_c_real = ctypes.POINTER(c_real)
@@ -167,7 +163,6 @@ class LibWarpX():
         # set the arg and return types of the wrapped functions
         self.libwarpx_so.amrex_init.argtypes = (ctypes.c_int, _LP_LP_c_char)
         self.libwarpx_so.amrex_init_with_inited_mpi.argtypes = (ctypes.c_int, _LP_LP_c_char, _MPI_Comm_type)
-        self.libwarpx_so.warpx_getParticleStructs.restype = _LP_particle_p
         self.libwarpx_so.warpx_getParticleArrays.restype = _LP_LP_c_particlereal
         self.libwarpx_so.warpx_getParticleCompIndex.restype = ctypes.c_int
         self.libwarpx_so.warpx_getEfield.restype = _LP_LP_c_real
@@ -743,49 +738,6 @@ class LibWarpX():
             ctypes.c_char_p(species_name.encode('utf-8')), local
         )
 
-    def get_particle_structs(self, species_name, level):
-        '''
-        This returns a list of numpy arrays containing the particle struct data
-        on each tile for this process. The particle data is represented as a structured
-        numpy array and contains the particle 'x', 'y', 'z', and 'idcpu'.
-
-        The data for the numpy arrays are not copied, but share the underlying
-        memory buffer with WarpX. The numpy arrays are fully writeable.
-
-        Parameters
-        ----------
-
-        species_name : str
-            The species name that the data will be returned for
-
-        level        : int
-            The refinement level to reference
-
-        Returns
-        -------
-
-        List of numpy arrays
-            The requested particle struct data
-        '''
-
-        particles_per_tile = _LP_c_int()
-        num_tiles = ctypes.c_int(0)
-        data = self.libwarpx_so.warpx_getParticleStructs(
-            ctypes.c_char_p(species_name.encode('utf-8')), level,
-            ctypes.byref(num_tiles), ctypes.byref(particles_per_tile)
-        )
-
-        particle_data = []
-        for i in range(num_tiles.value):
-            if particles_per_tile[i] == 0:
-                continue
-            arr = self._array1d_from_pointer(data[i], self._p_dtype, particles_per_tile[i])
-            particle_data.append(arr)
-
-        _libc.free(particles_per_tile)
-        _libc.free(data)
-        return particle_data
-
     def get_particle_arrays(self, species_name, comp_name, level):
         '''
         This returns a list of numpy arrays containing the particle array data
@@ -846,11 +798,10 @@ class LibWarpX():
         positions on each tile.
 
         '''
-        structs = self.get_particle_structs(species_name, level)
         if self.geometry_dim == '3d' or self.geometry_dim == '2d':
-            return [struct['x'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'x', level)
         elif self.geometry_dim == 'rz':
-            return [struct['x']*np.cos(theta) for struct, theta in zip(structs, self.get_particle_theta(species_name))]
+            return [x*np.cos(theta) for x, theta in zip(self.get_particle_arrays(species_name, 'x', level), self.get_particle_theta(species_name))]
         elif self.geometry_dim == '1d':
             raise Exception('get_particle_x: There is no x coordinate with 1D Cartesian')
 
@@ -861,11 +812,10 @@ class LibWarpX():
         positions on each tile.
 
         '''
-        structs = self.get_particle_structs(species_name, level)
         if self.geometry_dim == '3d':
-            return [struct['y'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'y', level)
         elif self.geometry_dim == 'rz':
-            return [struct['x']*np.sin(theta) for struct, theta in zip(structs, self.get_particle_theta(species_name))]
+            return [x*np.sin(theta) for x, theta in zip(self.get_particle_arrays(species_name, 'x', level), self.get_particle_theta(species_name))]
         elif self.geometry_dim == '1d' or self.geometry_dim == '2d':
             raise Exception('get_particle_y: There is no y coordinate with 1D or 2D Cartesian')
 
@@ -876,11 +826,10 @@ class LibWarpX():
         positions on each tile.
 
         '''
-        structs = self.get_particle_structs(species_name, level)
         if self.geometry_dim == 'rz':
-            return [struct['x'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'x', level)
         elif self.geometry_dim == '3d':
-            return [np.sqrt(struct['x']**2 + struct['y']**2) for struct in structs]
+            return np.sqrt(self.get_particle_arrays(species_name, 'x', level)**2 + self.get_particle_arrays(species_name, 'y', level)**2)
         elif self.geometry_dim == '2d' or self.geometry_dim == '1d':
             raise Exception('get_particle_r: There is no r coordinate with 1D or 2D Cartesian')
 
@@ -891,13 +840,12 @@ class LibWarpX():
         positions on each tile.
 
         '''
-        structs = self.get_particle_structs(species_name, level)
         if self.geometry_dim == '3d':
-            return [struct['z'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'z', level)
         elif self.geometry_dim == 'rz' or self.geometry_dim == '2d':
-            return [struct['y'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'y', level)
         elif self.geometry_dim == '1d':
-            return [struct['x'] for struct in structs]
+            return self.get_particle_arrays(species_name, 'x', level)
 
     def get_particle_id(self, species_name, level=0):
         '''
@@ -906,13 +854,7 @@ class LibWarpX():
         numbers on each tile.
 
         '''
-        ids = []
-        structs = self.get_particle_structs(species_name, level)
-        for ptile_of_structs in structs:
-            arr = np.empty(ptile_of_structs.shape, np.int64)
-            self.libwarpx_so.warpx_convert_id_to_long(arr, ptile_of_structs, arr.size)
-            ids.append(arr)
-        return ids
+        return self.get_particle_arrays(species_name, 'id', level)
 
     def get_particle_cpu(self, species_name, level=0):
         '''
@@ -921,13 +863,7 @@ class LibWarpX():
         numbers on each tile.
 
         '''
-        cpus = []
-        structs = self.get_particle_structs(species_name, level)
-        for ptile_of_structs in structs:
-            arr = np.empty(ptile_of_structs.shape, np.int32)
-            self.libwarpx_so.warpx_convert_cpu_to_int(arr, ptile_of_structs, arr.size)
-            cpus.append(arr)
-        return cpus
+        return self.get_particle_arrays(species_name, 'cpu', level)
 
     def get_particle_weight(self, species_name, level=0):
         '''
@@ -980,8 +916,7 @@ class LibWarpX():
         if self.geometry_dim == 'rz':
             return self.get_particle_arrays(species_name, 'theta', level)
         elif self.geometry_dim == '3d':
-            structs = self.get_particle_structs(species_name, level)
-            return [np.arctan2(struct['y'], struct['x']) for struct in structs]
+            return np.arctan2(self.get_particle_arrays(species_name, 'y', level), self.get_particle_arrays(species_name, 'x', level))
         elif self.geometry_dim == '2d' or self.geometry_dim == '1d':
             raise Exception('get_particle_theta: There is no theta coordinate with 1D or 2D Cartesian')
 
