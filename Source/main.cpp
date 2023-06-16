@@ -52,10 +52,14 @@ int main(int argc, char* argv[])
         ablastr::warn_manager::GetWMInstance().PrintGlobalWarnings("THE END");
 
         timer.record_stop_time();
-        if (warpx.Verbose()) {
+
+        if (! warpx.Verbose()) {
+            goto afterprint;
+        }
+
             amrex::Print() << "Total Time                     : "
                     << timer.get_global_duration() << '\n';
-        }
+afterprint:
 
         WARPX_PROFILE_VAR_STOP(pmain);
     }
