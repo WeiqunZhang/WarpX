@@ -627,6 +627,12 @@ WarpX::InitImposeFieldsGeom ()
     PlotFileData pf(impose_field_file_path);
     RealBox rb(pf.probLo(), pf.probHi());
     {
+        const int zdir = AMREX_SPACEDIM-1;
+        const auto zlen = rb.length(zdir);
+        rb.setHi(zdir, rb.lo(zdir));
+        rb.setLo(zdir, rb.hi(zdir)-zlen);
+    }
+    {
         ParmParse pp("geometry");
         pp.addarr("prob_lo", Vector<Real>{AMREX_D_DECL(rb.lo(0),rb.lo(1),rb.lo(2))});
         pp.addarr("prob_hi", Vector<Real>{AMREX_D_DECL(rb.hi(0),rb.hi(1),rb.hi(2))});
