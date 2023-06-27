@@ -636,6 +636,9 @@ WarpX::InitImposeFieldsGeom ()
     }
     m_impose_real_domain = rb;
     m_impose_t_lab = pf.time();
+    // This is only correct for gamma_boost=1. It will get updated for
+    // gamma_boost>1 in ConvertLabParamsToBoost().
+    m_t_boost_offset = m_impose_t_lab;
 }
 
 void
