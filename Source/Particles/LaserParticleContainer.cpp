@@ -154,7 +154,6 @@ LaserParticleContainer::LaserParticleContainer (AmrCore* amr_core, int ispecies,
                 lasers.str());
         }
     }
-
     //Check if profile exists
     if(laser_profiles_dictionary.count(laser_type_s) == 0 ){
         WARPX_ABORT_WITH_MESSAGE(std::string("Unknown laser type: ").append(laser_type_s));
@@ -186,7 +185,7 @@ LaserParticleContainer::LaserParticleContainer (AmrCore* amr_core, int ispecies,
         // Get the position of the plane, along the boost direction, in the lab frame
         // and convert the position of the antenna to the boosted frame
         m_Z0_lab = m_nvec[0]*m_position[0] + m_nvec[1]*m_position[1] + m_nvec[2]*m_position[2];
-        const Real Z0_boost = m_Z0_lab/WarpX::gamma_boost;
+        const Real Z0_boost = m_Z0_lab/WarpX::gamma_boost - WarpX::beta_boost*PhysConst::c*WarpX::m_t_boost_offset;
         m_position[0] += (Z0_boost-m_Z0_lab)*m_nvec[0];
         m_position[1] += (Z0_boost-m_Z0_lab)*m_nvec[1];
         m_position[2] += (Z0_boost-m_Z0_lab)*m_nvec[2];
@@ -869,7 +868,7 @@ LaserParticleContainer::update_laser_particle (WarpXParIter& pti,
         np,
         [=] AMREX_GPU_DEVICE (int i) {
             // Calculate the velocity according to the amplitude of E
-            const Real sign_charge = (pwp[i]>0) ? 1 : -1;
+            const Real sign_charge = (pwp[i]>0) ? -1 : 1;
             const Real v_over_c = sign_charge * tmp_mobility * amplitude[i];
             AMREX_ALWAYS_ASSERT_WITH_MESSAGE(amrex::Math::abs(v_over_c) < amrex::Real(1.),
                             "Error: calculated laser particle velocity greater than c."

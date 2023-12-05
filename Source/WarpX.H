@@ -154,6 +154,8 @@ public:
     //! Whether to apply the effect of an externally-defined magnetic field
     static bool add_external_B_field;
 
+    static inline amrex::Real m_t_boost_offset = 0;
+
     //! User-defined parser to initialize x-component of the magnetic field on the grid
     std::unique_ptr<amrex::Parser> Bxfield_parser;
     //! User-defined parser to initialize y-component of the magnetic field on the grid
@@ -468,6 +470,17 @@ public:
             Efield_aux[lev][0].get(),
             Efield_aux[lev][1].get(),
             Efield_aux[lev][2].get()
+        };
+    }
+    std::array<const amrex::MultiFab* const, 6>
+    get_array_EBfield_fp (const int lev) const{
+        return {
+            Efield_fp[lev][0].get(),
+            Efield_fp[lev][1].get(),
+            Efield_fp[lev][2].get(),
+            Bfield_fp[lev][0].get(),
+            Bfield_fp[lev][1].get(),
+            Bfield_fp[lev][2].get()
         };
     }
 
