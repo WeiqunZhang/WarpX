@@ -768,7 +768,7 @@ WarpXOpenPMDPlot::DumpToFile (ParticleContainer* pc,
                     for (auto i = 0; i < numParticleOnTile; i++) {
                         curr.get()[i] = aos[i].pos(currDim);
                     }
-                    std::string const positionComponent = positionComponents[currDim];
+                    std::string const& positionComponent = positionComponents[currDim];
                     currSpecies["position"][positionComponent].storeChunk(curr, {offset},
                                                                           {numParticleOnTile64});
                 }
