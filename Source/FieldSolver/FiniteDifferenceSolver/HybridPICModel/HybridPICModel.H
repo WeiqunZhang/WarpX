@@ -126,7 +126,7 @@ public:
      */
     void FillElectronPressureMF (
         std::unique_ptr<amrex::MultiFab> const& Pe,
-        amrex::MultiFab* const& rhofield );
+        amrex::MultiFab* const& rhofield ) const;
 
     // Declare variables to hold hybrid-PIC model parameters
     /** Number of substeps to take when evolving B */
