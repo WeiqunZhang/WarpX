@@ -13,7 +13,6 @@
 #include <ablastr/warn_manager/WarnManager.H>
 
 #include <AMReX_MultiFab.H>
-#include <AMReX_REAL.H>
 #include <AMReX_MLLinOp.H>
 #include <AMReX_Vector.H>
 #include <AMReX_Array.H>
@@ -25,10 +24,8 @@
 #   include <AMReX_EBFabFactory.H>
 #endif
 #include <AMReX_Parser.H>
-#include <AMReX_REAL.H>
 #include <AMReX_MFInterp_C.H>
 
-#include <AMReX_Array.H>
 #include <AMReX_Array4.H>
 #include <AMReX_BLassert.H>
 #include <AMReX_Box.H>
@@ -46,11 +43,7 @@
 #include <AMReX_LO_BCTYPES.H>
 #include <AMReX_MFIter.H>
 #include <AMReX_MLMG.H>
-#include <AMReX_MultiFab.H>
-#include <AMReX_REAL.H>
 #include <AMReX_SPACE.H>
-#include <AMReX_Vector.H>
-#include <AMReX_MFInterp_C.H>
 
 #include <array>
 #include <optional>
