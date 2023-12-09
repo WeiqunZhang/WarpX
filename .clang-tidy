@@ -7,6 +7,7 @@ Checks: '
         -bugprone-unchecked-optional-access,
     cert-*,
         -cert-err58-cpp,
+    clang-diagnostic-*,
     cppcoreguidelines-*,
         -cppcoreguidelines-avoid-c-arrays,
         -cppcoreguidelines-avoid-magic-numbers,
