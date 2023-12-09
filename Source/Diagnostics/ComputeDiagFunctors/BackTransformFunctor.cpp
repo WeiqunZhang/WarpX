@@ -60,12 +60,13 @@ BackTransformFunctor::operator ()(amrex::MultiFab& mf_dst, int /*dcomp*/, const 
         const int scomp = 0;
         // Generate slice of the cell-centered multifab containing boosted-frame field-data
         // at current z-boost location for the ith buffer
+        AMREX_ASSERT(m_mf_src);
         slice = amrex::get_slice_data(moving_window_dir,
                                      m_current_z_boost[i_buffer],
-                                     *m_mf_src,
+                                     *m_mf_src, // NOLINT(clang-analyzer-core.CallAndMessage)
                                      geom,
                                      scomp,
-                                     m_mf_src->nComp(),
+                                     m_mf_src->nComp(), // NOLINT(clang-analyzer-core.CallAndMessage)
                                      interpolate);
         // Perform in-place Lorentz-transform of all the fields stored in the slice.
         LorentzTransformZ( *slice, gamma_boost, beta_boost);

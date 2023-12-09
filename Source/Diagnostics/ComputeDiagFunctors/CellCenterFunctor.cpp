@@ -16,7 +16,10 @@ CellCenterFunctor::CellCenterFunctor(amrex::MultiFab const * mf_src, int lev,
 void
 CellCenterFunctor::operator()(amrex::MultiFab& mf_dst, int dcomp, const int /*i_buffer*/) const
 {
-    auto& warpx = WarpX::GetInstance();
-    InterpolateMFForDiag(mf_dst, *m_mf_src, dcomp, warpx.DistributionMap(m_lev),
-                         m_convertRZmodes2cartesian);
+    AMREX_ASSERT(m_mf_src);
+    if (m_mf_src) {
+        auto& warpx = WarpX::GetInstance();
+        InterpolateMFForDiag(mf_dst, *m_mf_src, dcomp, warpx.DistributionMap(m_lev),
+                             m_convertRZmodes2cartesian);
+    }
 }

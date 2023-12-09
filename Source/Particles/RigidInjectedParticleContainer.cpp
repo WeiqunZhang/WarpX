@@ -282,7 +282,7 @@ RigidInjectedParticleContainer::PushPX (WarpXParIter& pti,
                                     }
                                     SetPosition(i, xp, yp, zp);
 #ifdef WARPX_QED
-                                    if(loc_has_quantum_sync){
+                                    if(loc_has_quantum_sync && p_optical_depth_save){
                                         p_optical_depth[i] = p_optical_depth_save[i];}
 #endif
                                 }
