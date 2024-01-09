@@ -48,7 +48,7 @@ amrex::Real ho_interp_to_slice (int i, int j,
             + Real(-0.0625)*((src(i-2,j,iz  )+src(i+1,j,iz  ))*(Real(1.0)-w) +
                              (src(i-2,j,iz+1)+src(i+1,j,iz+1))*           w);
     } else {
-        return Real(0.5626*0.5625)*((src(i-1,j-1,iz  )+src(i  ,j-1,iz  ) +
+        return Real(0.5625*0.5625)*((src(i-1,j-1,iz  )+src(i  ,j-1,iz  ) +
                                      src(i-1,j  ,iz  )+src(i  ,j  ,iz  ))*(Real(1.0)-w) +
                                     (src(i-1,j-1,iz+1)+src(i  ,j-1,iz+1) +
                                      src(i-1,j  ,iz+1)+src(i  ,j  ,iz+1))*           w)
@@ -56,11 +56,11 @@ amrex::Real ho_interp_to_slice (int i, int j,
                                      src(i-2,j+1,iz  )+src(i+1,j+1,iz  ))*(Real(1.0)-w) +
                                     (src(i-2,j-2,iz+1)+src(i+1,j-2,iz+1) +
                                      src(i-2,j+1,iz+1)+src(i+1,j+1,iz+1))*           w)
-        -      Real(0.5626*0.0625)*((src(i-2,j-1,iz  )+src(i+1,j-1,iz  ) +
+        -      Real(0.5625*0.0625)*((src(i-2,j-1,iz  )+src(i+1,j-1,iz  ) +
                                      src(i-2,j  ,iz  )+src(i+1,j  ,iz  ))*(Real(1.0)-w) +
                                     (src(i-2,j-1,iz+1)+src(i+1,j-1,iz+1) +
                                      src(i-2,j  ,iz+1)+src(i+1,j  ,iz+1))*           w)
-        -      Real(0.5626*0.0625)*((src(i-1,j-2,iz  )+src(i  ,j-2,iz  ) +
+        -      Real(0.5625*0.0625)*((src(i-1,j-2,iz  )+src(i  ,j-2,iz  ) +
                                      src(i-1,j+1,iz  )+src(i  ,j+1,iz  ))*(Real(1.0)-w) +
                                     (src(i-1,j-2,iz+1)+src(i  ,j-2,iz+1) +
                                      src(i-1,j+1,iz+1)+src(i  ,j+1,iz+1))*           w);
