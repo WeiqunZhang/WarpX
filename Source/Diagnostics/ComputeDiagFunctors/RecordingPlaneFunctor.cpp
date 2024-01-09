@@ -12,6 +12,63 @@
 namespace {
 
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+amrex::Real ho_interp_to_slice (int i, int j,
+                                amrex::Array4<amrex::Real const> const& src,
+                                amrex::IndexType type, amrex::Real z)
+{
+    using amrex::Real;
+    if (type.cellCentered()) { z -= Real(0.5); }
+    int const iz = static_cast<int>(std::floor(z));
+    Real const w = z - Real(iz);
+#if (AMREX_SPACEDIM == 1)
+    amrex::ignore_unused(i,j,src,w);
+    amrex::Abort("interp_to_slice: 1D not supported");
+    return 0;
+#elif (AMREX_SPACEDIM == 2)
+    amrex::ignore_unused(j);
+    if (type.nodeCentered(0)) {
+        return src(i,iz,0)*(Real(1.0)-w) + src(i,iz+1,0)*w;
+    } else {
+        return Real(0.5625)*(src(i-1,iz,0)*(Real(1.0)-w) + src(i-1,iz+1,0)*w +
+                             src(i  ,iz,0)*(Real(1.0)-w) + src(i  ,iz+1,0)*w)
+            + Real(-0.0625)*(src(i-2,iz,0)*(Real(1.0)-w) + src(i-2,iz+1,0)*w +
+                             src(i+1,iz,0)*(Real(1.0)-w) + src(i+1,iz+1,0)*w);
+    }
+#else
+    if (type.nodeCentered(0) && type.nodeCentered(1)) {
+        return src(i,j,iz)*(Real(1.0)-w) + src(i,j,iz+1)*w;
+    } else if (type.nodeCentered(0)) {
+        return Real(0.5625)*((src(i,j-1,iz  )+src(i,j  ,iz  ))*(Real(1.0)-w) +
+                             (src(i,j-1,iz+1)+src(i,j  ,iz+1))*           w)
+            + Real(-0.0625)*((src(i,j-2,iz  )+src(i,j+1,iz  ))*(Real(1.0)-w) +
+                             (src(i,j-2,iz+1)+src(i,j+1,iz+1))*           w);
+    } else if (type.nodeCentered(1)) {
+        return Real(0.5625)*((src(i-1,j,iz  )+src(i  ,j,iz  ))*(Real(1.0)-w) +
+                             (src(i-1,j,iz+1)+src(i  ,j,iz+1))*           w)
+            + Real(-0.0625)*((src(i-2,j,iz  )+src(i+1,j,iz  ))*(Real(1.0)-w) +
+                             (src(i-2,j,iz+1)+src(i+1,j,iz+1))*           w);
+    } else {
+        return Real(0.5626*0.5625)*((src(i-1,j-1,iz  )+src(i  ,j-1,iz  ) +
+                                     src(i-1,j  ,iz  )+src(i  ,j  ,iz  ))*(Real(1.0)-w) +
+                                    (src(i-1,j-1,iz+1)+src(i  ,j-1,iz+1) +
+                                     src(i-1,j  ,iz+1)+src(i  ,j  ,iz+1))*           w)
+        +      Real(0.0626*0.0625)*((src(i-2,j-2,iz  )+src(i+1,j-2,iz  ) +
+                                     src(i-2,j+1,iz  )+src(i+1,j+1,iz  ))*(Real(1.0)-w) +
+                                    (src(i-2,j-2,iz+1)+src(i+1,j-2,iz+1) +
+                                     src(i-2,j+1,iz+1)+src(i+1,j+1,iz+1))*           w)
+        -      Real(0.5626*0.0625)*((src(i-2,j-1,iz  )+src(i+1,j-1,iz  ) +
+                                     src(i-2,j  ,iz  )+src(i+1,j  ,iz  ))*(Real(1.0)-w) +
+                                    (src(i-2,j-1,iz+1)+src(i+1,j-1,iz+1) +
+                                     src(i-2,j  ,iz+1)+src(i+1,j  ,iz+1))*           w)
+        -      Real(0.5626*0.0625)*((src(i-1,j-2,iz  )+src(i  ,j-2,iz  ) +
+                                     src(i-1,j+1,iz  )+src(i  ,j+1,iz  ))*(Real(1.0)-w) +
+                                    (src(i-1,j-2,iz+1)+src(i  ,j-2,iz+1) +
+                                     src(i-1,j+1,iz+1)+src(i  ,j+1,iz+1))*           w);
+    }
+#endif
+}
+
+AMREX_GPU_DEVICE AMREX_FORCE_INLINE
 amrex::Real interp_to_slice (int i, int j,
                              amrex::Array4<amrex::Real const> const& src,
                              amrex::IndexType type, amrex::Real z)
@@ -64,6 +121,12 @@ RecordingPlaneFunctor::operator() (amrex::MultiFab& mf_dst, int dcomp, int /*i_b
 {
     if (! m_slice_in_domain) { return; }
 
+    int recording_plane_high_order_interp = 0;
+    {
+        amrex::ParmParse pp;
+        pp.query("recording_plane_high_order_interp", recording_plane_high_order_interp);
+    }
+
     // 1. First get slice at given z-location
     auto const& warpx = WarpX::GetInstance();
     auto const& geom = warpx.Geom(m_lev);
@@ -83,9 +146,17 @@ RecordingPlaneFunctor::operator() (amrex::MultiFab& mf_dst, int dcomp, int /*i_b
     // only one cell in the z-direction.
 
     for (auto const& smf : m_arr_mf_src) {
-        AMREX_ALWAYS_ASSERT(smf->nGrowVect().allGE(amrex::IntVect(1)));
+        amrex::IntVect nstencil(1);
+        if (recording_plane_high_order_interp) {
+            for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
+                if (idim != slice_dir) {
+                    nstencil[idim] = 2;
+                }
+            }
+        }
+        AMREX_ALWAYS_ASSERT(smf->nGrowVect().allGE(nstencil));
         const_cast<amrex::MultiFab*>(smf)->FillBoundary
-            (0,1,amrex::IntVect(1),geom.periodicity());
+            (0,1,nstencil,geom.periodicity());
     }
 
     amrex::GpuArray<amrex::IndexType,6> src_itype
@@ -112,12 +183,21 @@ RecordingPlaneFunctor::operator() (amrex::MultiFab& mf_dst, int dcomp, int /*i_b
              (*m_arr_mf_src[5])[full_gid].const_array()};
 
         const amrex::Box& tbx = mfi.tilebox();
-        amrex::ParallelFor( tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
-        {
-            for (int n = 0; n < 6; ++n) {
-                slice_arr(i,j,k,n) = interp_to_slice(i,j,src_arr[n],src_itype[n],slice_z);
-            }
-        });
+        if (recording_plane_high_order_interp) {
+            amrex::ParallelFor( tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                for (int n = 0; n < 6; ++n) {
+                    slice_arr(i,j,k,n) = ho_interp_to_slice(i,j,src_arr[n],src_itype[n],slice_z);
+                }
+            });
+        } else {
+            amrex::ParallelFor( tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                for (int n = 0; n < 6; ++n) {
+                    slice_arr(i,j,k,n) = interp_to_slice(i,j,src_arr[n],src_itype[n],slice_z);
+                }
+            });
+        }
     }
 
     mf_dst.ParallelCopy(*slice, 0, dcomp, nComp());
