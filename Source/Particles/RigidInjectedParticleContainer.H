@@ -147,6 +147,8 @@ private:
     amrex::ParticleReal zinject_plane_lev_previous;
     bool done_injecting_lev;
 
+    // whether or not to deposit current before hitting the plane
+    int deposit_before_plane = 1;
 };
 
 #endif

@@ -67,6 +67,7 @@ RigidInjectedParticleContainer::RigidInjectedParticleContainer (AmrCore* amr_cor
     utils::parser::getWithParser(
         pp_species_name, "zinject_plane", zinject_plane);
     pp_species_name.query("rigid_advance", rigid_advance);
+    pp_species_name.query("deposit_before_plane", deposit_before_plane);
 
 }
 
@@ -522,13 +523,7 @@ RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
 {
     if (np_to_deposit <= 0) { return; }
 
-    long npre = 0;
-
-    int deposit_before_plane = 1;
-    {
-        amrex::ParmParse pp;
-        pp.query("deposit_before_plane", deposit_before_plane);
-    }
+    long ninactive = 0;
 
     if (! deposit_before_plane)
     {
@@ -537,7 +532,7 @@ RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
         Gpu::DeviceVector<long> pid(np_to_deposit);
         fillWithConsecutiveIntegers( pid );
         const ParticleReal zz = zinject_plane_levels[lev];
-        npre = amrex::StablePartition(pid.data(), pid.size(),
+        ninactive = amrex::StablePartition(pid.data(), pid.size(),
         [=] AMREX_GPU_DEVICE (int ip) -> bool
         {
             ParticleReal xp, yp, zp;
@@ -545,30 +540,35 @@ RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
             return zp  < zz;
         });
 
-        if (npre == np_to_deposit) {
+        if (ninactive == np_to_deposit) {
             return; // No particle will deposit current
-        } else if (npre > 0) {
+        } else if (ninactive > 0) {
             ParticleTileType ptile_tmp;
             ptile_tmp.define(NumRuntimeRealComps(), NumRuntimeIntComps());
             ptile_tmp.resize(np_to_deposit);
 
-            auto ctmp = ptile_tmp.getConstParticleTileData();
             auto  tmp = ptile_tmp.getParticleTileData();
 
             ParticleTileType& ptile = pti.GetParticleTile();
             auto corg = ptile.getConstParticleTileData();
-            auto  org = ptile.getParticleTileData();
-
-            amrex::ParallelFor(np_to_deposit, [=] AMREX_GPU_DEVICE (int ip)
-            {
-                amrex::copyParticle(tmp, corg, offset+ip, ip);
-            });
 
             auto* ppid = pid.data();
             amrex::ParallelFor(np_to_deposit, [=] AMREX_GPU_DEVICE (int ip)
             {
-                amrex::copyParticle(org, ctmp, ppid[ip], offset+ip);
+                amrex::copyParticle(tmp, corg, offset+ppid[ip], ip);
             });
+
+            if (np_to_deposit == ptile.numParticles()) {
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(offset == 0, "How did this happe?");
+                ptile.swap(ptile_tmp); // safe to swap
+            } else {
+                auto ctmp = ptile_tmp.getConstParticleTileData();
+                auto  org = ptile.getParticleTileData();
+                amrex::ParallelFor(np_to_deposit, [=] AMREX_GPU_DEVICE (int ip)
+                {
+                    amrex::copyParticle(org, ctmp, ip, offset+ip);
+                });
+            }
 
             Gpu::streamSynchronize();
         }
@@ -576,8 +576,8 @@ RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
 
     WarpXParticleContainer::DepositCurrent(pti, wp, uxp, uyp, uzp, ion_lev,
                                            jx, jy, jz,
-                                           offset + npre,
-                                           np_to_deposit - npre,
+                                           offset + ninactive,
+                                           np_to_deposit - ninactive,
                                            thread_num, lev, depos_lev, dt,
                                            relative_time, push_type);
 }
