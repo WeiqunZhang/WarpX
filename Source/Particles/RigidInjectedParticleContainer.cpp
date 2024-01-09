@@ -11,6 +11,7 @@
 #include "Gather/FieldGather.H"
 #include "Particles/Gather/GetExternalFields.H"
 #include "Particles/PhysicalParticleContainer.H"
+#include "Particles/Sorting/SortingUtils.H"
 #include "Particles/WarpXParticleContainer.H"
 #include "Pusher/GetAndSetPosition.H"
 #include "Pusher/UpdateMomentumBoris.H"
@@ -507,4 +508,76 @@ RigidInjectedParticleContainer::PushP (int lev, Real dt,
             amrex::Gpu::synchronize();
         }
     }
+}
+
+void
+RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
+                                                RealVector const & wp, RealVector const & uxp,
+                                                RealVector const & uyp, RealVector const & uzp,
+                                                int const * const ion_lev,
+                                                amrex::MultiFab * const jx, amrex::MultiFab * const jy, amrex::MultiFab * const jz,
+                                                long offset, long np_to_deposit,
+                                                int const thread_num, const int lev, int const depos_lev,
+                                                amrex::Real const dt, amrex::Real const relative_time, PushType push_type)
+{
+    if (np_to_deposit <= 0) { return; }
+
+    long npre = 0;
+
+    int deposit_before_plane = 1;
+    {
+        amrex::ParmParse pp;
+        pp.query("deposit_before_plane", deposit_before_plane);
+    }
+
+    if (! deposit_before_plane)
+    {
+        const auto GetPosition = GetParticlePosition<PIdx>(pti, offset);
+
+        Gpu::DeviceVector<long> pid(np_to_deposit);
+        fillWithConsecutiveIntegers( pid );
+        const ParticleReal zz = zinject_plane_levels[lev];
+        npre = amrex::StablePartition(pid.data(), pid.size(),
+        [=] AMREX_GPU_DEVICE (int ip) -> bool
+        {
+            ParticleReal xp, yp, zp;
+            GetPosition(ip, xp, yp, zp);
+            return zp  < zz;
+        });
+
+        if (npre == np_to_deposit) {
+            return; // No particle will deposit current
+        } else if (npre > 0) {
+            ParticleTileType ptile_tmp;
+            ptile_tmp.define(NumRuntimeRealComps(), NumRuntimeIntComps());
+            ptile_tmp.resize(np_to_deposit);
+
+            auto ctmp = ptile_tmp.getConstParticleTileData();
+            auto  tmp = ptile_tmp.getParticleTileData();
+
+            ParticleTileType& ptile = pti.GetParticleTile();
+            auto corg = ptile.getConstParticleTileData();
+            auto  org = ptile.getParticleTileData();
+
+            amrex::ParallelFor(np_to_deposit, [=] AMREX_GPU_DEVICE (int ip)
+            {
+                amrex::copyParticle(tmp, corg, offset+ip, ip);
+            });
+
+            auto* ppid = pid.data();
+            amrex::ParallelFor(np_to_deposit, [=] AMREX_GPU_DEVICE (int ip)
+            {
+                amrex::copyParticle(org, ctmp, ppid[ip], offset+ip);
+            });
+
+            Gpu::streamSynchronize();
+        }
+    }
+
+    WarpXParticleContainer::DepositCurrent(pti, wp, uxp, uyp, uzp, ion_lev,
+                                           jx, jy, jz,
+                                           offset + npre,
+                                           np_to_deposit - npre,
+                                           thread_num, lev, depos_lev, dt,
+                                           relative_time, push_type);
 }

@@ -110,6 +110,24 @@ public:
                         const amrex::MultiFab& By,
                         const amrex::MultiFab& Bz) override;
 
+    void DepositCurrent (WarpXParIter& pti,
+                         RealVector const & wp,
+                         RealVector const & uxp,
+                         RealVector const & uyp,
+                         RealVector const & uzp,
+                         int const* ion_lev,
+                         amrex::MultiFab* jx,
+                         amrex::MultiFab* jy,
+                         amrex::MultiFab* jz,
+                         long offset,
+                         long np_to_deposit,
+                         int thread_num,
+                         int lev,
+                         int depos_lev,
+                         amrex::Real dt,
+                         amrex::Real relative_time,
+                         PushType push_type) override;
+
     void ReadHeader (std::istream& is) override;
 
     void WriteHeader (std::ostream& os) const override;
