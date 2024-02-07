@@ -11,7 +11,6 @@
 #include "Evolve/WarpXDtType.H"
 #include "Evolve/WarpXPushType.H"
 #include "Laser/LaserProfiles.H"
-#include "Particles/LaserParticleContainer.H"
 #include "Particles/Pusher/GetAndSetPosition.H"
 #include "Particles/WarpXParticleContainer.H"
 #include "Utils/Parser/ParserUtils.H"
