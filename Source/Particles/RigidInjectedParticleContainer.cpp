@@ -529,7 +529,7 @@ RigidInjectedParticleContainer::DepositCurrent (WarpXParIter& pti,
     {
         const auto GetPosition = GetParticlePosition<PIdx>(pti, offset);
 
-        Gpu::DeviceVector<long> pid(np_to_deposit);
+        Gpu::DeviceVector<int> pid(np_to_deposit);
         fillWithConsecutiveIntegers( pid );
         const ParticleReal zz = zinject_plane_levels[lev];
         ninactive = amrex::StablePartition(pid.data(), pid.size(),
