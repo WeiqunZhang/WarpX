@@ -81,7 +81,7 @@ computePhiIGF ( amrex::MultiFab const & rho,
         BoxList bl(IndexType::TheNodeType);
         for (int iproc = 0; iproc < nprocs; ++iproc) {
             int zlo, zhi;
-            if (iproc < nleft) {
+            if (iproc < nleft_z) {
                 zlo = iproc*(minsize_z+1);
                 zhi = zlo + minsize_z;
             } else {
