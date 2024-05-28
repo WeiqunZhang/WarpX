@@ -79,7 +79,7 @@ computePhiIGF ( amrex::MultiFab const & rho,
         // nodes. We do it this way instead of BoxArray::maxSize to make
         // sure there are exactly nprocs boxes and there are no overlaps.
         BoxList bl(IndexType::TheNodeType);
-        for (int iproc = 0; iproc = nprocs; ++iproc) {
+        for (int iproc = 0; iproc < nprocs; ++iproc) {
             int zlo, zhi;
             if (iproc < nleft) {
                 zlo = iproc*(minsize_z+1);
