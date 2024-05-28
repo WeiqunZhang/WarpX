@@ -90,7 +90,9 @@ computePhiIGF ( amrex::MultiFab const & rho,
             }
             Box tbx(IntVect(0,0,zlo),IntVect(realspace_nx,realspace_ny,zhi),IntVect(1));
             tbx.shift(realspace_box.smallEnd());
+            bl.push_back(tbx);
         }
+        realspace_ba.define(std::move(bl));
         Vector<int> pmap(nprocs);
         std::iota(pmap.begin(), pmap.end(), 0);
         realspace_dm.define(std::move(pmap));
