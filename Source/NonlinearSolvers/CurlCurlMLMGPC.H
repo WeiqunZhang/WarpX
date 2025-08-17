@@ -132,6 +132,8 @@ class CurlCurlMLMGPC : public Preconditioner<T,Ops>
         amrex::Vector<amrex::DistributionMapping> m_dmap;
         amrex::IntVect m_gv;
 
+        int m_nprocs = 0;
+
         const amrex::Vector<amrex::Array<amrex::MultiFab*,3>>* m_bcoefs = nullptr;
 
         amrex::Array<amrex::LinOpBCType, AMREX_SPACEDIM> m_bc_lo;
@@ -187,6 +189,11 @@ void CurlCurlMLMGPC<T,Ops>::readParameters()
     pp.query("relative_tolerance",  m_rtol);
     pp.query("use_gmres",  m_use_gmres);
     pp.query("use_gmres_pc",  m_use_gmres_pc);
+    pp.query("nprocs", m_nprocs);
+    m_nprocs = std::max(m_nprocs, 0);
+    if (m_nprocs >= amrex::ParallelDescriptor::NProcs()) {
+        m_nprocs = 0;
+    }
 }
 
 template <class T, class Ops>
@@ -230,10 +237,20 @@ void CurlCurlMLMGPC<T,Ops>::Define ( const T& a_U,
     m_dmap.resize(m_num_amr_levels);
     for (int n = 0; n < m_num_amr_levels; n++) {
         m_geom[n] = m_ops->GetGeometry(n);
-        m_dmap[n] = u_mfarrvec[n][0]->DistributionMap();
+        if (m_nprocs == 0) {
+            m_dmap[n] = u_mfarrvec[n][0]->DistributionMap();
+            BoxArray ba = u_mfarrvec[n][0]->boxArray();
+            m_grids[n] = ba.enclosedCells();
+        } else {
+            BoxArray ba = amrex::convert(u_mfarrvec[n][0]->boxArray(),IntVect(0));
+            Box mbox = ba.minimalBox();
+            AMREX_ALWAYS_ASSERT(ba.numPts() == mbox.numPts());
 
-        BoxArray ba = u_mfarrvec[n][0]->boxArray();
-        m_grids[n] = ba.enclosedCells();
+            AMREX_ALWAYS_ASSERT(m_nprocs == 1);
+            m_grids[n] = BoxArray(mbox);
+            Vector<int> pmap(1,0);
+            m_dmap[n] = DistributionMapping(std::move(pmap));
+        }
     }
 
     // Construct the curl-curl linear operator and set its BCs
@@ -290,28 +307,42 @@ void CurlCurlMLMGPC<T,Ops>::Update (const T& a_U)
     m_curl_curl->setScalars(alpha, RT(1.0));
 
     if (!m_beta_scalar) {
+        Vector<Array<MultiFab const*,3>> bcoefs_va(m_num_amr_levels);
         for (int n = 0; n < m_num_amr_levels; n++) {
 #if defined(WARPX_DIM_1D_Z)
             // Missing dimensions is x,y in WarpX and y,z in AMReX
-            m_curl_curl->setBeta({Array<MultiFab const*,3>{ (*m_bcoefs)[n][2],
-                                                            (*m_bcoefs)[n][1],
-                                                            (*m_bcoefs)[n][0]}});
+            bcoefs_va[n][0] = (*m_bcoefs)[n][2];
+            bcoefs_va[n][1] = (*m_bcoefs)[n][1];
+            bcoefs_va[n][0] = (*m_bcoefs)[n][0];
 #elif defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
             // Missing dimensions is y,z in WarpX and y,z in AMReX
-            m_curl_curl->setBeta({Array<MultiFab const*,3>{ (*m_bcoefs)[n][0],
-                                                            (*m_bcoefs)[n][1],
-                                                            (*m_bcoefs)[n][2]}});
+            bcoefs_va[n][0] = (*m_bcoefs)[n][0];
+            bcoefs_va[n][1] = (*m_bcoefs)[n][1];
+            bcoefs_va[n][0] = (*m_bcoefs)[n][2];
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
             // Missing dimension is y in WarpX and z in AMReX
-            m_curl_curl->setBeta({Array<MultiFab const*,3>{ (*m_bcoefs)[n][0],
-                                                            (*m_bcoefs)[n][2],
-                                                            (*m_bcoefs)[n][1]}});
+            bcoefs_va[n][0] = (*m_bcoefs)[n][0];
+            bcoefs_va[n][1] = (*m_bcoefs)[n][2];
+            bcoefs_va[n][0] = (*m_bcoefs)[n][1];
 #elif defined(WARPX_DIM_3D)
-            m_curl_curl->setBeta({Array<MultiFab const*,3>{ (*m_bcoefs)[n][0],
-                                                            (*m_bcoefs)[n][1],
-                                                            (*m_bcoefs)[n][2]}});
+            bcoefs_va[n][0] = (*m_bcoefs)[n][0];
+            bcoefs_va[n][1] = (*m_bcoefs)[n][1];
+            bcoefs_va[n][0] = (*m_bcoefs)[n][2];
 #endif
         }
+        Vector<Array<MultiFab,3>> bcoefs_raii(m_num_amr_levels);
+        if (m_nprocs != 0) {
+            for (int n = 0; n < m_num_amr_levels; ++n) {
+                for (int idim = 0; idim < 3; ++idim) {
+                    auto itype = bcoefs_va[n][idim]->ixType();
+                    bcoefs_raii[n][idim].define(amrex::convert(m_grids[n],itype),
+                                                m_dmap[n], 1, 0);
+                    bcoefs_raii[n][idim].ParallelCopy(*bcoefs_va[n][idim]);
+                    bcoefs_va[n][idim] = &(bcoefs_raii[n][idim]);
+                }
+            }
+        }
+        m_curl_curl->setBeta(bcoefs_va);
     }
 
     if (m_verbose) {
@@ -343,6 +374,10 @@ void CurlCurlMLMGPC<T,Ops>::Apply (T& a_x, const T& a_b)
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         a_b.getArrayVecType()==warpx::fields::FieldType::Efield_fp,
         "CurlCurlMLMGPC::Apply() - a_b must be Efield_fp type");
+
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        m_num_amr_levels == 1,
+        "The following code does not work with multiple levels");
 
     // Get the data vectors
     auto& b_mfarrvec = a_b.getArrayVec();
@@ -387,11 +422,30 @@ void CurlCurlMLMGPC<T,Ops>::Apply (T& a_x, const T& a_b)
                                      MultiFab(*b_mfarrvec[n][2], make_alias, 0, 1) };
 #endif
 
-        m_curl_curl->prepareRHS({&rhs});
-        if (m_use_gmres) {
-            m_gmres_solver->solve(solution, rhs, m_rtol, m_atol);
+        if (m_nprocs == 0) {
+            m_curl_curl->prepareRHS({&rhs});
+            if (m_use_gmres) {
+                m_gmres_solver->solve(solution, rhs, m_rtol, m_atol);
+            } else {
+                m_solver->solve({&solution}, {&rhs}, m_rtol, m_atol);
+            }
         } else {
-            m_solver->solve({&solution}, {&rhs}, m_rtol, m_atol);
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!m_use_gmres, "Not supported");
+            Array<MultiFab,3> sol_tmp;
+            Array<MultiFab,3> rhs_tmp;
+            for (int idim = 0; idim < 3; ++idim) {
+                auto ixtype = solution[idim].ixType();
+                sol_tmp[idim].define(amrex::convert(m_grids[n],ixtype),
+                                     m_dmap[n], 1, 1);
+                rhs_tmp[idim].define(amrex::convert(m_grids[n],ixtype),
+                                     m_dmap[n], 1, 0);
+                sol_tmp[idim].setVal(0);
+                rhs_tmp[idim].ParallelCopy(rhs[idim]);
+            }
+            m_solver->solve({&sol_tmp}, {&rhs_tmp}, m_rtol, m_atol);
+            for (int idim = 0; idim < 3; ++idim) {
+                solution[idim].ParallelCopy(sol_tmp[idim]);
+            }
         }
     }
 }
