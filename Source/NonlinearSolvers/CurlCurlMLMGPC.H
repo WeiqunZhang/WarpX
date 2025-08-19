@@ -313,21 +313,21 @@ void CurlCurlMLMGPC<T,Ops>::Update (const T& a_U)
             // Missing dimensions is x,y in WarpX and y,z in AMReX
             bcoefs_va[n][0] = (*m_bcoefs)[n][2];
             bcoefs_va[n][1] = (*m_bcoefs)[n][1];
-            bcoefs_va[n][0] = (*m_bcoefs)[n][0];
+            bcoefs_va[n][2] = (*m_bcoefs)[n][0];
 #elif defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
             // Missing dimensions is y,z in WarpX and y,z in AMReX
             bcoefs_va[n][0] = (*m_bcoefs)[n][0];
             bcoefs_va[n][1] = (*m_bcoefs)[n][1];
-            bcoefs_va[n][0] = (*m_bcoefs)[n][2];
+            bcoefs_va[n][2] = (*m_bcoefs)[n][2];
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
             // Missing dimension is y in WarpX and z in AMReX
             bcoefs_va[n][0] = (*m_bcoefs)[n][0];
             bcoefs_va[n][1] = (*m_bcoefs)[n][2];
-            bcoefs_va[n][0] = (*m_bcoefs)[n][1];
+            bcoefs_va[n][2] = (*m_bcoefs)[n][1];
 #elif defined(WARPX_DIM_3D)
             bcoefs_va[n][0] = (*m_bcoefs)[n][0];
             bcoefs_va[n][1] = (*m_bcoefs)[n][1];
-            bcoefs_va[n][0] = (*m_bcoefs)[n][2];
+            bcoefs_va[n][2] = (*m_bcoefs)[n][2];
 #endif
         }
         Vector<Array<MultiFab,3>> bcoefs_raii(m_num_amr_levels);
