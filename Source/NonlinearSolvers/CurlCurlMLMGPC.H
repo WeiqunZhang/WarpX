@@ -253,19 +253,38 @@ void CurlCurlMLMGPC<T,Ops>::Define ( const T& a_U,
         }
     }
 
-    // Construct the curl-curl linear operator and set its BCs
-    m_curl_curl = std::make_unique<MLCurlCurl>(m_geom, m_grids, m_dmap, *m_info);
-    m_curl_curl->setDomainBC(m_ops->GetLinOpBCLo(), m_ops->GetLinOpBCHi());
+    bool is_active = true;
+#ifdef AMREX_USE_MPI
+    if (m_nprocs == 1) {
+        if(ParallelDescriptor::MyProc() == 0) {
+            amrex::ParallelContext::push(MPI_COMM_SELF);
+        } else {
+            is_active = false;
+        }
+    }
+#endif
 
-    // Dummy value for alpha and beta to avoid abort due to degenerate matrix by MLMG solver
-    m_curl_curl->setScalars(1.0, 1.0);
+    if (is_active) {
+        // Construct the curl-curl linear operator and set its BCs
+        m_curl_curl = std::make_unique<MLCurlCurl>(m_geom, m_grids, m_dmap, *m_info);
+        m_curl_curl->setDomainBC(m_ops->GetLinOpBCLo(), m_ops->GetLinOpBCHi());
 
-    // Construct the MLMG solver
-    m_solver = std::make_unique<MLMGT<MFArr>>(*m_curl_curl);
-    m_solver->setMaxIter(m_max_iter);
-    m_solver->setFixedIter(m_max_iter);
-    m_solver->setVerbose(static_cast<int>(m_verbose));
-    m_solver->setBottomVerbose(static_cast<int>(m_bottom_verbose));
+        // Dummy value for alpha and beta to avoid abort due to degenerate matrix by MLMG solver
+        m_curl_curl->setScalars(1.0, 1.0);
+
+        // Construct the MLMG solver
+        m_solver = std::make_unique<MLMGT<MFArr>>(*m_curl_curl);
+        m_solver->setMaxIter(m_max_iter);
+        m_solver->setFixedIter(m_max_iter);
+        m_solver->setVerbose(static_cast<int>(m_verbose));
+        m_solver->setBottomVerbose(static_cast<int>(m_bottom_verbose));
+    }
+
+#ifdef AMREX_USE_MPI
+    if (m_nprocs == 1 && ParallelDescriptor::MyProc() == 0) {
+        amrex::ParallelContext::pop();
+    }
+#endif
 
     // If using GMRES solver, construct it
     if (m_use_gmres) {
@@ -304,7 +323,7 @@ void CurlCurlMLMGPC<T,Ops>::Update (const T& a_U)
     }
 
     const RT alpha = (thetaDt*PhysConst::c) * (thetaDt*PhysConst::c);
-    m_curl_curl->setScalars(alpha, RT(1.0));
+    if (m_curl_curl) { m_curl_curl->setScalars(alpha, RT(1.0)); }
 
     if (!m_beta_scalar) {
         Vector<Array<MultiFab const*,3>> bcoefs_va(m_num_amr_levels);
@@ -342,7 +361,15 @@ void CurlCurlMLMGPC<T,Ops>::Update (const T& a_U)
                 }
             }
         }
-        m_curl_curl->setBeta(bcoefs_va);
+        if (m_curl_curl) {
+#ifdef AMREX_USE_MPI
+            amrex::ParallelContext::push(MPI_COMM_SELF);
+#endif
+            m_curl_curl->setBeta(bcoefs_va);
+#ifdef AMREX_USE_MPI
+            amrex::ParallelContext::pop();
+#endif
+        }
     }
 
     if (m_verbose) {
@@ -442,7 +469,15 @@ void CurlCurlMLMGPC<T,Ops>::Apply (T& a_x, const T& a_b)
                 sol_tmp[idim].setVal(0);
                 rhs_tmp[idim].ParallelCopy(rhs[idim]);
             }
+#ifdef AMREX_USE_MPI
+            if (m_nprocs == 1 && ParallelDescriptor::MyProc() == 0) {
+                amrex::ParallelContext::push(MPI_COMM_SELF);
+                m_solver->solve({&sol_tmp}, {&rhs_tmp}, m_rtol, m_atol);
+                amrex::ParallelContext::pop();
+            }
+#else
             m_solver->solve({&sol_tmp}, {&rhs_tmp}, m_rtol, m_atol);
+#endif
             for (int idim = 0; idim < 3; ++idim) {
                 solution[idim].ParallelCopy(sol_tmp[idim]);
             }
