@@ -88,6 +88,62 @@ using namespace amrex;
 
 namespace
 {
+    /** Return the number of particles per cell as specified by the user
+     *
+     * This provides the user input parameters for particles per cell to
+     * initialize, before applying profile functions for individual cells
+     * (which might set the real nppc of a cell to zero).
+     *
+     * TODO: this does not yet support multiple injection sources from
+     *       <species_name>.injection_sources
+     * \see PlasmaInjector::PlasmaInjector
+     */
+    amrex::Real
+    get_nppc (ParmParse & pp_spec)
+    {
+        amrex::Real nppc = 0;
+
+        std::string injection_style = "none";
+        pp_spec.query("injection_style", injection_style);
+        std::transform(injection_style.begin(),
+                       injection_style.end(),
+                       injection_style.begin(),
+                       ::tolower);
+
+        if (injection_style == "singleparticle") {
+            nppc = 1;
+        } else if (injection_style == "multipleparticles") {
+            std::vector<int> multiple_particles_pos_x;
+            utils::parser::getArrWithParser(pp_spec, "multiple_particles_pos_x", multiple_particles_pos_x);
+            nppc = multiple_particles_pos_x.size();
+        } else if (injection_style == "gaussian_beam") {
+            // TODO: hard to estimate well
+            // Possible way: take the npart parameter, normalize by rms scale to nppc via cell size on level 0.
+            nppc = 1;
+        } else if (injection_style == "nrandompercell") {
+            amrex::Real num_particles_per_cell = 0;
+            utils::parser::getWithParser(pp_spec, "num_particles_per_cell", num_particles_per_cell);
+            nppc = num_particles_per_cell;
+        } else if (injection_style == "nfluxpercell") {
+            amrex::Real num_particles_per_cell = 0;
+            utils::parser::getWithParser(pp_spec, "num_particles_per_cell", num_particles_per_cell);
+            nppc = num_particles_per_cell;
+        } else if (injection_style == "nuniformpercell") {
+            std::vector<int> nppc_v(3,1);
+            utils::parser::getArrWithParser(pp_spec, "num_particles_per_cell_each_dim", nppc_v);
+            nppc = AMREX_D_TERM(Real(nppc_v[0]),*Real(nppc_v[1]),*Real(nppc_v[2]));
+        } else if (injection_style == "external_file") {
+            // TODO
+        } else if (injection_style != "none") {
+            nppc = 0;
+        }
+
+        // TODO: <species_name>.read_from_file
+        // https://github.com/BLAST-WarpX/warpx/issues/6157
+
+        return nppc;
+    }
+
 
     /** Print dt and dx,dy,dz */
     void PrintDtDxDyDz (
@@ -168,7 +224,7 @@ namespace
                 << "Consider decreasing the amr.blocking_factor and "
                 << "amr.max_grid_size parameters and/or using fewer MPI ranks.\n"
                 << "  More information:\n"
-                << "  https://warpx.readthedocs.io/en/latest/usage/workflows/parallelization.html\n";
+                << "  https://warpx.readthedocs.io/en/latest/usage/workflows/domain_decomposition.html\n";
 
             ablastr::warn_manager::WMRecordWarning(
             "Performance", warnMsg.str(), ablastr::warn_manager::WarnPriority::high);
@@ -191,7 +247,7 @@ namespace
                 << "Consider increasing the amr.blocking_factor and "
                 << "amr.max_grid_size parameters and/or using more MPI ranks.\n"
                 << "  More information:\n"
-                << "  https://warpx.readthedocs.io/en/latest/usage/workflows/parallelization.html\n";
+                << "  https://warpx.readthedocs.io/en/latest/usage/workflows/domain_decomposition.html\n";
 
             ablastr::warn_manager::WMRecordWarning(
             "Performance", warnMsg.str(), ablastr::warn_manager::WarnPriority::high);
@@ -340,9 +396,7 @@ WarpX::PostProcessBaseGrids (BoxArray& ba0) const
             {
                 split_using_this_species = true;
                 utils::parser::queryWithParser(pp_spec, "density_min", density_min);
-                std::vector<int> nppc_v(3,1);
-                utils::parser::getArrWithParser(pp_spec, "num_particles_per_cell_each_dim", nppc_v);
-                nppc = AMREX_D_TERM(Real(nppc_v[0]),*Real(nppc_v[1]),*Real(nppc_v[2]));
+                nppc = get_nppc(pp_spec);
             }
 
             // If this species is not initialized by parse_density_function,
@@ -516,11 +570,11 @@ WarpX::PrintMainPICparameters ()
       amrex::Print() << "                      | - macroscopic" << "\n";
     }
     if ( (m_em_solver_medium == MediumForEM::Macroscopic) &&
-       (WarpX::macroscopic_solver_algo == MacroscopicSolverAlgo::LaxWendroff)){
+       (m_macroscopic_solver_algo == MacroscopicSolverAlgo::LaxWendroff)){
       amrex::Print() << "                      |  - Lax-Wendroff algorithm\n";
     }
     else if ((m_em_solver_medium == MediumForEM::Macroscopic) &&
-            (WarpX::macroscopic_solver_algo == MacroscopicSolverAlgo::BackwardEuler)){
+            (m_macroscopic_solver_algo == MacroscopicSolverAlgo::BackwardEuler)){
       amrex::Print() << "                      |  - Backward Euler algorithm\n";
     }
     if(electrostatic_solver_id != ElectrostaticSolverAlgo::None){
@@ -620,14 +674,20 @@ WarpX::PrintMainPICparameters ()
       if (time_dependency_J == TimeDependencyJ::Linear){
         amrex::Print() << "                      |   - time_dependency_J = linear \n";
       }
-      if (time_dependency_J == TimeDependencyJ::Constant){
+      else if (time_dependency_J == TimeDependencyJ::Constant){
         amrex::Print() << "                      |   - time_dependency_J = constant \n";
+      }
+      else if (time_dependency_J == TimeDependencyJ::Quadratic){
+        amrex::Print() << "                      |   - time_dependency_J = quadratic \n";
       }
       if (time_dependency_rho == TimeDependencyRho::Linear){
         amrex::Print() << "                      |   - time_dependency_rho = linear \n";
       }
-      if (time_dependency_rho == TimeDependencyRho::Constant){
+      else if (time_dependency_rho == TimeDependencyRho::Constant){
         amrex::Print() << "                      |   - time_dependency_rho = constant \n";
+      }
+      else if (time_dependency_rho == TimeDependencyRho::Quadratic){
+        amrex::Print() << "                      |   - time_dependency_rho = quadratic \n";
       }
     }
     if (fft_do_time_averaging){
@@ -905,7 +965,7 @@ WarpX::AddExternalFields (int const lev)
 
 void
 WarpX::InitDiagnostics () {
-    multi_diags->InitData();
+    multi_diags->InitData(*mypc);
     reduced_diags->InitData();
 }
 
@@ -919,8 +979,6 @@ WarpX::InitFromScratch ()
     if (m_implicit_solver) {
 
         m_implicit_solver->Define(this);
-        m_implicit_solver->GetParticleSolverParams( max_particle_its_in_implicit_scheme,
-                                                    particle_tol_in_implicit_scheme );
         m_implicit_solver->CreateParticleAttributes();
     }
 

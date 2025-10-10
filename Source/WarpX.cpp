@@ -88,6 +88,7 @@
 #include <AMReX_Random.H>
 #include <AMReX_SPACE.H>
 #include <AMReX_TagBox.H>
+#include <AMReX_VisMF.H>
 
 #include <algorithm>
 #include <cmath>
@@ -118,8 +119,6 @@ Vector<int> WarpX::boost_direction = {0,0,0};
 bool WarpX::compute_max_step_from_btd = false;
 Real WarpX::zmin_domain_boost_step_0 = 0._rt;
 
-int WarpX::max_particle_its_in_implicit_scheme = 21;
-ParticleReal WarpX::particle_tol_in_implicit_scheme = 1.e-10;
 bool WarpX::do_dive_cleaning = false;
 bool WarpX::do_divb_cleaning = false;
 bool WarpX::do_single_precision_comms = false;
@@ -321,6 +320,9 @@ WarpX::Finalize()
 
 WarpX::WarpX ()
 {
+    m_instance = this; // This guarantees that GetInstance() can be
+                       // indirectly used in WarpX constructor.
+
     warpx::initialization::initialize_warning_manager();
 
     ReadParameters();
@@ -878,9 +880,13 @@ WarpX::ReadParameters ()
 #endif
         pp_warpx.query("do_shared_mem_charge_deposition", do_shared_mem_charge_deposition);
         pp_warpx.query("do_shared_mem_current_deposition", do_shared_mem_current_deposition);
-#if !(defined(AMREX_USE_HIP) || defined(AMREX_USE_CUDA))
+#if !(defined(AMREX_USE_HIP) || defined(AMREX_USE_CUDA)) || \
+    (defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE))
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!do_shared_mem_current_deposition,
-                "requested shared memory for current deposition, but shared memory is only available for CUDA or HIP");
+            "requested shared memory for current deposition,\
+            but shared memory is only available for CUDA or HIP,\
+            and for geometries other than 1D cylindrical and 1D spherical."
+        );
 #endif
         pp_warpx.query("shared_mem_current_tpb", shared_mem_current_tpb);
 
@@ -1022,13 +1028,6 @@ WarpX::ReadParameters ()
 
         {
             // Parameters below control all plotfile diagnostics
-            bool plotfile_min_max = true;
-            pp_warpx.query("plotfile_min_max", plotfile_min_max);
-            if (plotfile_min_max) {
-                plotfile_headerversion = amrex::VisMF::Header::Version_v1;
-            } else {
-                plotfile_headerversion = amrex::VisMF::Header::NoFabHeader_v1;
-            }
             pp_warpx.query("usesingleread", use_single_read);
             pp_warpx.query("usesinglewrite", use_single_write);
             ParmParse pp_vismf("vismf");
@@ -1343,7 +1342,7 @@ WarpX::ReadParameters ()
         pp_algo.query_enum_sloppy("em_solver_medium", m_em_solver_medium, "-_");
         if (m_em_solver_medium == MediumForEM::Macroscopic ) {
             pp_algo.query_enum_sloppy("macroscopic_sigma_method",
-                                      macroscopic_solver_algo, "-_");
+                                      m_macroscopic_solver_algo, "-_");
         }
 
         if (evolve_scheme == EvolveScheme::SemiImplicitEM ||
