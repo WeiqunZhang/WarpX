@@ -414,13 +414,13 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
 #if defined(WARPX_DIM_1D_Z)
                 auto dof_arr = dofs_mfarrvec[lev][dir]->const_array(mfi);
 #elif defined(WARPX_DIM_RCYLINDER)
-                amrex::ignore_unused(dxi);
+                amrex::ignore_unused(dxi, BC_mask_Edir_arr);
                 WARPX_ABORT_WITH_MESSAGE("MatrixPC<T,Ops>::Assemble() not yet implemented for WARPX_DIM_RCYLINDER");
 #elif defined(WARPX_DIM_RSPHERE)
-                amrex::ignore_unused(dxi);
+                amrex::ignore_unused(dxi, BC_mask_Edir_arr);
                 WARPX_ABORT_WITH_MESSAGE("MatrixPC<T,Ops>::Assemble() not yet implemented for WARPX_DIM_RSPHERE");
 #elif defined(WARPX_DIM_RZ)
-                amrex::ignore_unused(dxi);
+                amrex::ignore_unused(dxi, BC_mask_Edir_arr);
                 WARPX_ABORT_WITH_MESSAGE("MatrixPC<T,Ops>::Assemble() not yet implemented for WARPX_DIM_RZ");
 #elif defined(WARPX_DIM_XZ)
                 auto dof_arr = dofs_mfarrvec[lev][dir]->const_array(mfi);
