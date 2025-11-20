@@ -99,7 +99,6 @@ void WarpXSolverDOF::Define ( WarpX* const        a_WarpX,
                 for (int comp = 1; comp < dof->nComp(); comp += 2) { // Only call this on global id
                     dof->FillBoundaryAndSync(comp, 1, dof->nGrowVect(), a_WarpX->Geom(lev).periodicity());
                 }
-                amrex::writeFabs(ToMultiFab(*dof), "dof-"+std::to_string(n));
             }
         }
         if (auto* dof = m_scalar[lev].get()) {
