@@ -349,7 +349,6 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
     // Get DOF object from a_U
     const auto& dofs_obj = a_U.getDOFsObject();
     const auto& dofs_mfarrvec = dofs_obj->m_array;
-    const auto& dofs_lhs_mfarrvec = dofs_obj->m_array_lhs;
     AMREX_ALWAYS_ASSERT(m_ndofs_l == dofs_obj->m_nDoFs_l);
     AMREX_ALWAYS_ASSERT(m_ndofs_g == dofs_obj->m_nDoFs_g);
 
@@ -371,8 +370,6 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
     auto c_indices_g_ptr = m_c_indices_g.data();
     auto a_ij_ptr = m_a_ij.data();
 
-    const auto ndofs_l = m_ndofs_l;
-    const auto ndofs_g = m_ndofs_g;
     const auto nnz_max = m_pc_mat_nnz;
     auto nnz_actual = nnz_max;
 
@@ -396,7 +393,6 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
             for (amrex::MFIter mfi(*dofs_mfarrvec[lev][dir]); mfi.isValid(); ++mfi) {
 
                 auto bx = mfi.tilebox();
-                auto dof_lhs_arr = dofs_lhs_mfarrvec[lev][dir]->const_array(mfi);
 
                 // BC mask values for in-plane components of curl curl E operator for 2D
                 auto BC_mask_Edir_arr = BC_mask_Edir->const_array(mfi);
@@ -435,16 +431,16 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
                 if (thetaDt > 0.0) {
                     ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                     {
+                        int ridx_l = dof_arr(i,j,k,0);
+                        if (ridx_l < 0) { return; }
+
                         int icol = 0;
-                        int ridx_l = dof_lhs_arr(i,j,k,0);
-                        int ridx_g = dof_lhs_arr(i,j,k,1);
-                        AMREX_ALWAYS_ASSERT((ridx_l >= 0) && (ridx_l < ndofs_l));
-                        AMREX_ALWAYS_ASSERT((ridx_g >= 0) && (ridx_g < ndofs_g));
+                        int ridx_g = dof_arr(i,j,k,1);
 
                         r_indices_g_ptr[ridx_l] = ridx_g;
 
                         {
-                            int cidx_g_lhs = dof_lhs_arr(i,j,k,1);
+                            int cidx_g_lhs = dof_arr(i,j,k,1);
                             amrex::Real val = 1.0;
                             auto flag = MatrixPCUtils::insertOrAdd( cidx_g_lhs, val,
                                                                     &c_indices_g_ptr[ridx_l*nnz_max],
@@ -647,11 +643,12 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
 
                     ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                     {
-                        int ridx_l = dof_lhs_arr(i,j,k,0);
-                        AMREX_ALWAYS_ASSERT((ridx_l >= 0) && (ridx_l < ndofs_l));
+                        int ridx_l = dof_arr(i,j,k,0);
+                        if (ridx_l < 0) { return; }
+
                         int icol = num_nz_ptr[ridx_l];
                         {
-                            int cidx_g_lhs = dof_lhs_arr(i,j,k,1);
+                            int cidx_g_lhs = dof_arr(i,j,k,1);
                             amrex::Real val = sigma_ii_arr(i,j,k,diag_MM_comp);
                             auto flag = MatrixPCUtils::insertOrAdd( cidx_g_lhs, val,
                                                                     &c_indices_g_ptr[ridx_l*nnz_max],
