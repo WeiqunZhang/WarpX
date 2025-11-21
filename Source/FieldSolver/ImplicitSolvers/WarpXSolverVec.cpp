@@ -160,7 +160,7 @@ void WarpXSolverVec::copyFrom ( const amrex::Real* const a_arr)
                     {
                         for (int v = 0; v < ncomp; v++) {
                             int dof = dof_arr(i,j,k,2*v); // local
-                            if (dof > 0) {
+                            if (dof >= 0) {
                                 data_arr(i,j,k,v) = a_arr[dof];
                             }
                         }
@@ -179,7 +179,7 @@ void WarpXSolverVec::copyFrom ( const amrex::Real* const a_arr)
                 {
                     for (int v = 0; v < ncomp; v++) {
                         int dof = dof_arr(i,j,k,2*v); // local
-                        if (dof > 0) {
+                        if (dof >= 0) {
                             data_arr(i,j,k,v) = a_arr[dof];
                         }
                     }
