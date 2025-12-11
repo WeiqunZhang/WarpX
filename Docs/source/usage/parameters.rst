@@ -1339,8 +1339,10 @@ Distribution across MPI ranks and parallelization
     :default: false
     :optional:
 
-    Whether to split high density boxes during initialization. This can
-    improve the potential for load balancing.
+    Whether to split high density boxes during initialization and split or
+    merge boxes at runtime load-balancing intervals. Boxes are merged when
+    their combined cost is below the threshold and their combined size does
+    not exceed ``amr.max_grid_size``.
 
 .. pp:param:: warpx.split_high_density_boxes_threshold
     :type: ``float``
@@ -1350,6 +1352,8 @@ Distribution across MPI ranks and parallelization
     Threshold used in splitting high density boxes. If a Box has more
     particles than the average number of particles per MPI process
     multiplied by this factor, we try to split this Box into smaller ones.
+    During runtime load balancing, the same criterion uses the selected
+    load-balancing costs instead of particle counts.
 
 .. pp:param:: warpx.split_high_density_boxes_min_box_size
     :type: ``integer``

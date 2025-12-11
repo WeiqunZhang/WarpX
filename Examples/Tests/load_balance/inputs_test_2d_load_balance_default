@@ -1,0 +1,3 @@
+FILE = inputs_base_2d
+electrons.density = 1.
+warpx.split_high_density_boxes = 0

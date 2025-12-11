@@ -1,0 +1,7 @@
+FILE = inputs_base_2d
+electrons.density = 1.
+amr.n_cell = 32 16
+# Only the left box has particles; initialization ignores constant profiles.
+electrons.xmax = 5.e-5
+algo.costs_heuristic_particles_wt = 1.
+warpx.split_high_density_boxes_threshold = 1.1

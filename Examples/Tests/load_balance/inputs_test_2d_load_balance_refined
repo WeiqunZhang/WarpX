@@ -1,0 +1,8 @@
+FILE = inputs_base_2d
+electrons.density = 1.
+boundary.field_lo = periodic periodic
+boundary.field_hi = periodic periodic
+amr.max_level = 1
+amr.ref_ratio = 2
+warpx.fine_tag_lo = 2.5e-5 2.5e-5
+warpx.fine_tag_hi = 7.5e-5 7.5e-5
