@@ -17,8 +17,8 @@ jobs:
     name: Analyze
     uses: ./.github/workflows/check_changes.yml
 
-  build_UB_sanitizer:
-    name: Clang UB sanitizer
+  build_UB_sanitizer_1d:
+    name: Clang UB sanitizer 1D
     runs-on: ubuntu-24.04
     needs: check_changes
     if: ${{ github.event.pull_request.draft == false && needs.check_changes.outputs.has_non_docs_changes == 'true' }}
@@ -43,7 +43,7 @@ jobs:
       run: |
         export CCACHE_COMPRESS=1
         export CCACHE_COMPRESSLEVEL=10
-        export CCACHE_MAXSIZE=300M
+        export CCACHE_MAXSIZE=1000M
         ccache -z
 
         export CXX=$(which clang++-19)
@@ -54,7 +54,131 @@ jobs:
           -GNinja                           \
           -DCMAKE_VERBOSE_MAKEFILE=ON       \
           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-          -DWarpX_DIMS="RZ;1;2;3"           \
+          -DWarpX_DIMS=1                    \
+          -DWarpX_FFT=ON                    \
+          -DWarpX_QED=ON                    \
+          -DWarpX_QED_TABLE_GEN=ON          \
+          -DWarpX_OPENPMD=ON
+        cmake --build build -j 4
+
+        ccache -s
+        du -hs ~/.cache/ccache
+
+    - name: run with UB sanitizer
+      run: |
+
+        export OMP_NUM_THREADS=2
+
+        #MPI implementations often leak memory
+        export "ASAN_OPTIONS=detect_leaks=0"
+
+        # Print stacktrace for easier debugging
+        export UBSAN_OPTIONS=print_stacktrace=1
+
+        git clone https://github.com/ECP-WarpX/warpx-data ../warpx-data
+
+        ctest --test-dir build/Examples/Physics_applications/ -R ".*\.run" --output-on-failure
+
+  build_UB_sanitizer_2:
+    name: Clang UB sanitizer 2D
+    runs-on: ubuntu-24.04
+    needs: check_changes
+    if: ${{ github.event.pull_request.draft == false && needs.check_changes.outputs.has_non_docs_changes == 'true' }}
+    env:
+      CC: clang
+      CXX: clang++
+      # On CI for this test, Ninja is slower than the default:
+      #CMAKE_GENERATOR: Ninja
+    steps:
+    - uses: actions/checkout@v4
+    - name: install dependencies
+      run: |
+        .github/workflows/dependencies/clang.sh 19
+    - name: CCache Cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ github.workflow }}-${{ github.job }}-git-${{ github.sha }}
+        restore-keys: |
+             ccache-${{ github.workflow }}-${{ github.job }}-git-
+    - name: build WarpX
+      run: |
+        export CCACHE_COMPRESS=1
+        export CCACHE_COMPRESSLEVEL=10
+        export CCACHE_MAXSIZE=1000M
+        ccache -z
+
+        export CXX=$(which clang++-19)
+        export CC=$(which clang-19)
+        export CXXFLAGS="-fsanitize=undefined,address,pointer-compare -fno-sanitize-recover=all"
+
+        cmake -S . -B build                 \
+          -GNinja                           \
+          -DCMAKE_VERBOSE_MAKEFILE=ON       \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DWarpX_DIMS="RZ;2"               \
+          -DWarpX_FFT=ON                    \
+          -DWarpX_QED=ON                    \
+          -DWarpX_QED_TABLE_GEN=ON          \
+          -DWarpX_OPENPMD=ON
+        cmake --build build -j 4
+
+        ccache -s
+        du -hs ~/.cache/ccache
+
+    - name: run with UB sanitizer
+      run: |
+
+        export OMP_NUM_THREADS=2
+
+        #MPI implementations often leak memory
+        export "ASAN_OPTIONS=detect_leaks=0"
+
+        # Print stacktrace for easier debugging
+        export UBSAN_OPTIONS=print_stacktrace=1
+
+        git clone https://github.com/ECP-WarpX/warpx-data ../warpx-data
+
+        ctest --test-dir build/Examples/Physics_applications/ -R ".*\.run" --output-on-failure
+
+  build_UB_sanitizer_3:
+    name: Clang UB sanitizer 3D
+    runs-on: ubuntu-24.04
+    needs: check_changes
+    if: ${{ github.event.pull_request.draft == false && needs.check_changes.outputs.has_non_docs_changes == 'true' }}
+    env:
+      CC: clang
+      CXX: clang++
+      # On CI for this test, Ninja is slower than the default:
+      #CMAKE_GENERATOR: Ninja
+    steps:
+    - uses: actions/checkout@v4
+    - name: install dependencies
+      run: |
+        .github/workflows/dependencies/clang.sh 19
+    - name: CCache Cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ github.workflow }}-${{ github.job }}-git-${{ github.sha }}
+        restore-keys: |
+             ccache-${{ github.workflow }}-${{ github.job }}-git-
+    - name: build WarpX
+      run: |
+        export CCACHE_COMPRESS=1
+        export CCACHE_COMPRESSLEVEL=10
+        export CCACHE_MAXSIZE=1000M
+        ccache -z
+
+        export CXX=$(which clang++-19)
+        export CC=$(which clang-19)
+        export CXXFLAGS="-fsanitize=undefined,address,pointer-compare -fno-sanitize-recover=all"
+
+        cmake -S . -B build                 \
+          -GNinja                           \
+          -DCMAKE_VERBOSE_MAKEFILE=ON       \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DWarpX_DIMS=3                    \
           -DWarpX_FFT=ON                    \
           -DWarpX_QED=ON                    \
           -DWarpX_QED_TABLE_GEN=ON          \
