@@ -187,13 +187,13 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
         *mf = std::move(*pmf);
     };
 
-    // The MLMG tuning cache is keyed by the layout being replaced.
-    ablastr::fields::MLMGTuningCache::erase(lev, boxArray(lev), DistributionMap(lev));
-
     bool const eb_enabled = EB::enabled();
     if (ba == boxArray(lev))
     {
         if (ParallelDescriptor::NProcs() == 1) { return; }
+
+        // The MLMG tuning cache is keyed by the layout being replaced.
+        ablastr::fields::MLMGTuningCache::erase(lev, boxArray(lev), DistributionMap(lev));
 
         m_fields.remake_level(lev, dm);
 

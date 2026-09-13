@@ -550,7 +550,14 @@ Overall simulation parameters
     solves and keeps the fastest setup, which is then reused for all later solves
     with that layout. This costs extra time up front and pays off for runs with
     many solves. Setups that fail or produce NaNs are discarded; if none work,
-    the default parameters are used.
+    the default parameters are used. Note that the tuning is repeated whenever
+    the grid layout changes, e.g. after each load balance. Since it costs many
+    trial solves, it pays off only if there are many solves between layout changes.
+
+    This only applies to the scalar potential solve of the ``labframe``,
+    ``labframe-electromagnetostatic`` and ``relativistic`` solvers; the
+    ``labframe-effective-potential`` solver and the magnetostatic vector potential
+    solve ignore it.
 
 .. pp:param:: warpx.magnetostatic_solver_required_precision
     :type: ``float``

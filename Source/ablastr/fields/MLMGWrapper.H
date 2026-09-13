@@ -22,7 +22,6 @@
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <new>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -214,8 +213,6 @@ public:
                     t = t1-t0;
                 } catch (MLMG::error const&) {
                     t = t_failed; // the solve failed
-                } catch (std::bad_alloc const&) {
-                    t = t_failed; // the setup does not fit in memory
                 }
                 amrex::ParallelAllReduce::Max(t, amrex::ParallelContext::CommunicatorSub());
                 return t;
@@ -273,25 +270,14 @@ public:
                     }
 #endif
 
-                    MultiFab phi_sb, rho_sb;
-                    bool sb_ok = true;
-                    try {
-                        phi_sb.define(ba, dm, 1, 1);
-                        rho_sb.define(ba, dm, 1, 0);
-                    } catch (std::bad_alloc const&) {
-                        sb_ok = false; // does not fit in memory
-                    }
+                    MultiFab phi_sb(ba, dm, 1, 1);
+                    MultiFab rho_sb(ba, dm, 1, 0);
 
                     // For single Box case, agg_grid_size does not matter
-                    for (int mcl = 0; sb_ok && (mcl <= mcl0); ++mcl) {
+                    for (int mcl = 0; mcl <= mcl0; ++mcl) {
                         auto info = info0;
                         info.setMaxCoarseningLevel(mcl);
-                        LinOpPair tmp;
-                        try {
-                            tmp = make_mlmg_linop(info, ba, dm, fac);
-                        } catch (std::bad_alloc const&) {
-                            continue; // does not fit in memory
-                        }
+                        auto tmp = make_mlmg_linop(info, ba, dm, fac);
                         tmp.first->setThrowException(true);
                         tmp.first->setMaxIter(std::min(max_iters, 2*niter0));
                         for (bool const nosync : no_gpu_sync_options) {
@@ -336,12 +322,7 @@ public:
                         if ((mcl == 0) && (ags != -1)) { continue; }
                         auto info = info0;
                         info.setMaxCoarseningLevel(mcl).setAgglomerationGridSize(ags);
-                        LinOpPair tmp;
-                        try {
-                            tmp = make_mlmg_linop(info, ba, dm, factory);
-                        } catch (std::bad_alloc const&) {
-                            continue; // does not fit in memory
-                        }
+                        auto tmp = make_mlmg_linop(info, ba, dm, factory);
                         tmp.first->setThrowException(true);
                         tmp.first->setMaxIter(std::min(max_iters, 2*niter0));
                         for (bool const nosync : no_gpu_sync_options) {
@@ -377,7 +358,7 @@ public:
 
                     if (verbosity > 0) {
                         std::string msg("MLMG parameters chosen:");
-                        if (m_parms.single_box) { msg += " original boxes agglomerated,"; }
+                        if (m_parms.single_box) { msg += " single_box=true,"; }
                         msg.append(" max_coarsening_level=").append(std::to_string(m_parms.mcl));
                         if (m_parms.ags != -1) {
                             msg.append(" agglomeration_grid_size=").append(std::to_string(m_parms.ags));
@@ -400,6 +381,12 @@ public:
                         amrex::Print() << "MLMG tuning failed. Using the default parameters.\n";
                     }
                 }
+
+#if defined(AMREX_USE_EB)
+                if (!m_parms.single_box) {
+                    MLMGTuningCache::eraseSingleBox(lev);
+                }
+#endif
             } // end of if (!baseline_ok || (niter0 > 0))
         }
 
@@ -451,9 +438,6 @@ public:
     }
 
 private:
-
-    using LinOpPair = std::pair<std::unique_ptr<amrex::MLMG>,
-                                std::unique_ptr<amrex::MLNodeLinOp>>;
 
     using Parms = MLMGTuningCache::Parms;
 

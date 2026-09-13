@@ -23,6 +23,7 @@ namespace ablastr::fields
  *
  * The key holds raw reference ids, so an entry must be erased before its
  * BoxArray or DistributionMapping is replaced (e.g. on load balance).
+ * Both maps are cleared by amrex::ExecOnFinalize.
  */
 struct MLMGTuningCache
 {
@@ -54,7 +55,14 @@ struct MLMGTuningCache
 
     static void insert (Key const& key, Parms const& parms)
     {
-        if (m_parms_map.size() > 1000) { m_parms_map.clear(); } // just in case
+        if (!m_finalize_registered) {
+            m_finalize_registered = true;
+            amrex::ExecOnFinalize([] () {
+                m_parms_map.clear();
+                m_finalize_registered = false;
+            });
+        }
+        if (m_parms_map.size() > 10) { m_parms_map.clear(); } // just in case
         m_parms_map[key] = parms;
     }
 
@@ -90,8 +98,12 @@ struct MLMGTuningCache
         return sb;
     }
 
+    //! Drop a level's single-Box layout and EB factory, e.g. when single-Box was not chosen.
+    static void eraseSingleBox (int lev) { m_single_box_map.erase(lev); }
+
 private:
     inline static bool m_tune = false;
+    inline static bool m_finalize_registered = false;
     inline static std::map<Key, Parms> m_parms_map;
     inline static std::map<int, SingleBox> m_single_box_map;
 };

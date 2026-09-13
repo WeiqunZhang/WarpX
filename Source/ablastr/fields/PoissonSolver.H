@@ -305,6 +305,9 @@ computePhi (
             if (eb_farray_box_factory) { fab_factory = eb_farray_box_factory.value()[lev]; }
         }
 
+        ABLASTR_ALWAYS_ASSERT_WITH_MESSAGE(!eb_enabled || current_time.has_value(),
+            "computePhi: current_time is required with embedded boundaries");
+
         MLMGWrapper<T_BoundaryHandler> mlmg_wrapper
             (lev, eb_enabled, is_rz, is_solver_igf_on_lev0,
              dx_scaled, beta_solver, geom[lev], *rho[lev], boundary_handler,
