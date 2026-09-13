@@ -78,7 +78,7 @@ public:
 
             if (eb_enabled || is_rz) {
                 // In the presence of EB or RZ: the solver assumes that the beam is
-                // propagating along  one of the axes of the grid, i.e. that only *one*
+                // propagating along one of the axes of the grid, i.e. that only *one*
                 // of the components of `beta` is non-negligible.
                 auto linop_nodelap = std::make_unique<MLEBNodeFDLaplacian>();
                 if (eb_enabled) {
@@ -191,19 +191,10 @@ public:
         {
             MultiFab phi(rho.boxArray(), rho.DistributionMap(), 1, 1, MFInfo{}, rho.Factory());
 
-            // Some of the setups tried below might blow up. We want to discard
-            // them, not to crash the run. So floating point exception trapping
-            // (e.g., amrex.fpe_trap_invalid) must be disabled while we tune.
-            // Otherwise the run would be killed by a signal before we had a
-            // chance to catch the failure.
+            // We want to disable fpe trapping because some of the setups
+            // tried below might blow up.
             FPExceptGuard const fpe_guard{};
 
-            // Time one attempt at solving with the current setup. Returns the
-            // globally reduced time, or t_failed if the setup is to be
-            // discarded. Only failures that mean "this setup does not work"
-            // are caught here. Anything else, for instance an amrex::Abort
-            // turned into an exception by amrex.throw_exception, is a real
-            // error and must not be mistaken for a slow setup.
             auto time_attempt = [&] (auto&& attempt)
             {
                 auto t = t_failed;
@@ -214,14 +205,18 @@ public:
                     attempt();
                     Gpu::synchronize();
                     auto const t1 = amrex::second();
-                    assert_no_nan(phi);
+                    if (phi.contains_nan(0, 1, 0)) {
+                        throw amrex::MLMG::error
+                            ("ablastr::fields::MLMGWrapper: solution contains NaNs");
+                    }
                     t = t1-t0;
                 } catch (MLMG::error const&) {
                     t = t_failed; // the solve failed
                 } catch (std::bad_alloc const&) {
                     t = t_failed; // the setup does not fit in memory
                 }
-                return reduce_time(t);
+                amrex::ParallelAllReduce::Max(t, amrex::ParallelContext::CommunicatorSub());
+                return t;
             };
 
             auto tsolve = t_failed;
@@ -230,10 +225,7 @@ public:
             { // base line
                 auto tmp = make_mlmg_linop(info0, rho.boxArray(), rho.DistributionMap(), factory);
                 mcl0 = tmp.second->NMGLevels(0) - 1;
-                // The baseline solve itself might fail (e.g., it might not
-                // converge for this rho). In that case, we keep tsolve at its
-                // maximal value so that any setup that does work below will be
-                // chosen, and we use max_iters for the other setups.
+                // The baseline solve itself might fail.
                 niter0 = max_iters;
                 tsolve = time_attempt([&] {
                     tmp.first->solve({&phi}, {&rho}, relative_tolerance,
@@ -470,7 +462,9 @@ private:
     amrex::Geometry m_geom;
     amrex::BoxArray m_ba;
     amrex::DistributionMapping m_dm;
-    //! Temporaries of the single Box solve. See solve_single_box.
+    //! Temporaries of the single Box solve. They must be kept alive because
+    //! MLMG aliases them and MLMG::getGradSolution in another part of WarpX
+    //! will need them.
     amrex::MultiFab m_phi_tmp;
     amrex::MultiFab m_rho_tmp;
     std::unique_ptr<amrex::MLMG> m_mlmg;
@@ -483,25 +477,13 @@ private:
     //! Elapsed time marking a setup that failed and must not be selected
     static constexpr double t_failed = std::numeric_limits<double>::max();
 
-    /** RAII guard disabling floating point exception trapping.
-     *
-     * On the host, a NaN or an overflow produced by a diverging solve raises
-     * SIGFPE if trapping is enabled. That kills the run before the failure can
-     * be caught as an exception.
-     *
-     * The trap mask is part of the state of a thread, and it is inherited from
-     * the thread that creates it. Because AMReX enables trapping before the
-     * OpenMP threads are created, the threads have their own copy of the mask
-     * with trapping enabled. Thus it is not enough to change the mask of the
-     * master thread only. We must do it on all threads, and we must remember
-     * the previous mask of each thread, because they are not necessarily the
-     * same.
-     */
+    //! RAII guard disabling floating point exception trapping.
     struct FPExceptGuard
     {
         FPExceptGuard ()
             : m_prev(amrex::OpenMP::get_max_threads(), amrex::FPExcept::none)
         {
+            // Yes, each thread has its own settings.
 #ifdef AMREX_USE_OMP
 #pragma omp parallel
 #endif
@@ -530,42 +512,7 @@ private:
         amrex::Vector<amrex::FPExcept> m_prev;
     };
 
-    /** Reduce the measured solve time over all processes.
-     *
-     * The time measured by each process is different. Because all processes
-     * must choose the same parameters, the decision has to be based on a
-     * globally reduced time. We use the maximum, because that is when all
-     * processes have finished. Note that this communicates failures as well,
-     * because the time of a failed solve is `t_failed`.
-     */
-    static double reduce_time (double t)
-    {
-        amrex::ParallelAllReduce::Max(t, amrex::ParallelContext::CommunicatorSub());
-        return t;
-    }
-
-    /** Throw an exception if the solution contains NaNs.
-     *
-     * MLMG's convergence test is based on the max norm, which ignores NaNs.
-     * Therefore MLMG may report success even though the solution is polluted
-     * by NaNs. So we must check the solution explicitly. We throw the same
-     * type as a failing MLMG solve, because that is what the tuning treats as
-     * a setup that does not work.
-     */
-    static void assert_no_nan (amrex::MultiFab const& phi)
-    {
-        if (phi.contains_nan(0, 1, 0)) {
-            throw amrex::MLMG::error("ablastr::fields::MLMGWrapper: solution contains NaNs");
-        }
-    }
-
-    /** Solve on a single Box covering the whole domain.
-     *
-     * `phi_tmp` and `rho_tmp` are owned by the caller, because MLMG aliases
-     * the solution we pass to it. MLMG::getGradSolution, which the caller may
-     * use after the solve, reads that alias. So `phi_tmp` must not be a local
-     * variable here.
-     */
+    //! Solve on a single Box covering the whole domain.
     static void solve_single_box (amrex::Geometry const& geom,
                                   amrex::MLMG& mlmg, int ng,
                                   amrex::MultiFab& phi, amrex::MultiFab const& rho,
