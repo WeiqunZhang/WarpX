@@ -35,6 +35,10 @@ struct MLMGTuningCache
 
     using Key = std::pair<int, amrex::FabArrayBase::BDKey>;
 
+    //! Enable/disable tuning (opt-in, since it performs trial solves).
+    static void setTuning (bool enable) { m_tune = enable; }
+    static bool tuning () { return m_tune; }
+
     static Key makeKey (int lev, amrex::BoxArray const& ba,
                         amrex::DistributionMapping const& dm)
     {
@@ -87,6 +91,7 @@ struct MLMGTuningCache
     }
 
 private:
+    inline static bool m_tune = false;
     inline static std::map<Key, Parms> m_parms_map;
     inline static std::map<int, SingleBox> m_single_box_map;
 };

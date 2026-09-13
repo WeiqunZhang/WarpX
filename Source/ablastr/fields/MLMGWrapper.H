@@ -12,7 +12,6 @@
 #include <AMReX_OpenMP.H>
 #include <AMReX_ParallelContext.H>
 #include <AMReX_ParallelReduce.H>
-#include <AMReX_ParmParse.H>
 #ifdef AMREX_USE_EB
 #   include <AMReX_EBFabFactory.H>
 #endif
@@ -52,9 +51,6 @@ public:
     {
         using namespace amrex;
         using namespace amrex::literals;
-
-        ParmParse const pp("warpx");
-        pp.query("tune_mlmg", m_tune_mlmg);
 
         LPInfo info0;
         if (!eb_enabled && !is_rz) {
@@ -186,13 +182,14 @@ public:
 
         // Tuning is expensive, because it performs a number of trial solves.
         // So it is opt-in. Without it, the default parameters are used.
+        bool const tune_mlmg = MLMGTuningCache::tuning();
         auto const key = MLMGTuningCache::makeKey(lev, rho.boxArray(), rho.DistributionMap());
-        auto const* cached = m_tune_mlmg ? MLMGTuningCache::find(key) : nullptr;
+        auto const* cached = tune_mlmg ? MLMGTuningCache::find(key) : nullptr;
         if (cached)
         {
             m_parms = *cached;
         }
-        else if (m_tune_mlmg)
+        else if (tune_mlmg)
         {
             MultiFab phi(rho.boxArray(), rho.DistributionMap(), 1, 1, MFInfo{}, rho.Factory());
 
@@ -472,8 +469,6 @@ private:
     std::unique_ptr<amrex::MLMG> m_mlmg;
     std::unique_ptr<amrex::MLNodeLinOp> m_linop;
     int m_ng;
-    //! Auto-tune the MLMG parameters? (warpx.tune_mlmg)
-    bool m_tune_mlmg = false;
 
     //! Elapsed time marking a setup that failed and must not be selected
     static constexpr double t_failed = std::numeric_limits<double>::max();
