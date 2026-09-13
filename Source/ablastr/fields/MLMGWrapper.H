@@ -336,6 +336,8 @@ public:
                 }
                 for (int mcl = 0; mcl <= mcl0; ++mcl) {
                     for (int const ags : agg_grid_size) {
+                        // Without coarse levels there is no agglomeration.
+                        if ((mcl == 0) && (ags != -1)) { continue; }
                         auto info = info0;
                         info.setMaxCoarseningLevel(mcl).setAgglomerationGridSize(ags);
                         LinOpPair tmp;
