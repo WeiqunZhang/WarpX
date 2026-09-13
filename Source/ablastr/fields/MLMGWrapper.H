@@ -406,6 +406,7 @@ public:
             m_ba.convert(rho.ixType());
             m_dm = DistributionMapping(Vector<int>{0});
             m_phi_tmp.define(m_ba, m_dm, 1, 1);
+            m_phi_tmp.setVal(0); // ghost nodes at Dirichlet faces are never written by MLMG
             m_rho_tmp.define(m_ba, m_dm, 1, 0);
 #if defined(AMREX_USE_EB)
             if (eb_enabled) {
