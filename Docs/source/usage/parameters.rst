@@ -540,7 +540,7 @@ Overall simulation parameters
 
 .. pp:param:: warpx.tune_mlmg
     :type: ``bool``
-    :default: ``0``
+    :default: ``false``
 
     Whether to auto-tune the AMReX MLMG parameters (grid agglomeration, maximum
     coarsening level, and, on GPUs, stream synchronization) used by the
