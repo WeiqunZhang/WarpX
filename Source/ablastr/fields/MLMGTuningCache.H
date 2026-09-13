@@ -7,11 +7,13 @@
 #ifndef ABLASTR_MLMG_TUNING_CACHE_H_
 #define ABLASTR_MLMG_TUNING_CACHE_H_
 
-#include <AMReX_BoxArray.H>
-#include <AMReX_DistributionMapping.H>
+#include <AMReX.H>
 #include <AMReX_FabArrayBase.H>
+#include <AMReX_FabFactory.H>
+#include <AMReX_FArrayBox.H>
 
 #include <map>
+#include <memory>
 #include <utility>
 
 namespace ablastr::fields
@@ -59,8 +61,34 @@ struct MLMGTuningCache
         m_parms_map.erase(makeKey(lev, ba, dm));
     }
 
+    //! Layout of the single-Box solve, plus its EB factory (built by the caller on demand).
+    struct SingleBox {
+        amrex::Box domain;
+        amrex::BoxArray ba;
+        amrex::DistributionMapping dm;
+        std::unique_ptr<amrex::FabFactory<amrex::FArrayBox>> eb_factory;
+    };
+
+    //! Single-Box layout of a level. Rebuilt if the domain or index type changed.
+    static SingleBox& singleBox (int lev, amrex::Box const& domain, amrex::IndexType typ)
+    {
+        if (m_single_box_map.empty()) {
+            amrex::ExecOnFinalize([] () { m_single_box_map.clear(); });
+        }
+        auto& sb = m_single_box_map[lev];
+        if (sb.ba.empty() || sb.domain != domain || sb.ba.ixType() != typ) {
+            sb = SingleBox{};
+            sb.domain = domain;
+            sb.ba = amrex::BoxArray(domain);
+            sb.ba.convert(typ);
+            sb.dm = amrex::DistributionMapping(amrex::Vector<int>{0});
+        }
+        return sb;
+    }
+
 private:
     inline static std::map<Key, Parms> m_parms_map;
+    inline static std::map<int, SingleBox> m_single_box_map;
 };
 
 } // namespace ablastr::fields

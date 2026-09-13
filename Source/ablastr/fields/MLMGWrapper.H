@@ -261,18 +261,19 @@ public:
                 if ((lev == 0) && (rho.size() > 1)
                     && (geom.Domain().numPts() <= (Long(256)*Long(256)*Long(256))))
                 {
-                    BoxArray ba(geom.Domain());
-                    ba.convert(rho.ixType());
-                    DistributionMapping const dm(Vector<int>{0});
+                    auto& sb = MLMGTuningCache::singleBox(lev, geom.Domain(), rho.ixType());
+                    BoxArray const& ba = sb.ba;
+                    DistributionMapping const& dm = sb.dm;
 
                     auto const* fac = factory;
 #if defined(AMREX_USE_EB)
-                    std::unique_ptr<EBFArrayBoxFactory> eb_fac;
                     if (eb_enabled) {
-                        eb_fac = amrex::makeEBFabFactory
-                            (static_cast<EBFArrayBoxFactory const*>(factory)->getEBIndexSpace(),
-                             geom, ba, dm, {1,1,1}, EBSupport::full);
-                        fac = static_cast<FabFactory<FArrayBox> const*>(eb_fac.get());
+                        if (!sb.eb_factory) {
+                            sb.eb_factory = amrex::makeEBFabFactory
+                                (static_cast<EBFArrayBoxFactory const*>(factory)->getEBIndexSpace(),
+                                 geom, ba, dm, {1,1,1}, EBSupport::full);
+                        }
+                        fac = sb.eb_factory.get();
                     }
 #endif
 
@@ -405,22 +406,21 @@ public:
         }
 
         auto const* fac = factory;
-#if defined(AMREX_USE_EB)
-        std::unique_ptr<EBFArrayBoxFactory> eb_fac;
-#endif
         if (m_parms.single_box) {
-            m_ba = BoxArray(geom.Domain());
-            m_ba.convert(rho.ixType());
-            m_dm = DistributionMapping(Vector<int>{0});
+            auto& sb = MLMGTuningCache::singleBox(lev, geom.Domain(), rho.ixType());
+            m_ba = sb.ba;
+            m_dm = sb.dm;
             m_phi_tmp.define(m_ba, m_dm, 1, 1);
             m_phi_tmp.setVal(0); // ghost nodes at Dirichlet faces are never written by MLMG
             m_rho_tmp.define(m_ba, m_dm, 1, 0);
 #if defined(AMREX_USE_EB)
             if (eb_enabled) {
-                eb_fac = amrex::makeEBFabFactory
-                    (static_cast<EBFArrayBoxFactory const*>(factory)->getEBIndexSpace(),
-                     m_geom, m_ba, m_dm, {1,1,1}, EBSupport::full);
-                fac = static_cast<FabFactory<FArrayBox> const*>(eb_fac.get());
+                if (!sb.eb_factory) {
+                    sb.eb_factory = amrex::makeEBFabFactory
+                        (static_cast<EBFArrayBoxFactory const*>(factory)->getEBIndexSpace(),
+                         m_geom, m_ba, m_dm, {1,1,1}, EBSupport::full);
+                }
+                fac = sb.eb_factory.get();
             }
 #endif
         } else {
