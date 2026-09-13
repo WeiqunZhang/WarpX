@@ -1,6 +1,8 @@
 #ifndef ABLASTR_MLMG_WRAPPER_H_
 #define ABLASTR_MLMG_WRAPPER_H_
 
+#include <ablastr/fields/MLMGTuningCache.H>
+
 #include <AMReX.H>
 #include <AMReX_Exception.H>
 #include <AMReX_MLMG.H>
@@ -18,7 +20,6 @@
 #include <array>
 #include <cfenv>
 #include <limits>
-#include <map>
 #include <memory>
 #include <new>
 #include <utility>
@@ -179,11 +180,11 @@ public:
 
         // Tuning is expensive, because it performs a number of trial solves.
         // So it is opt-in. Without it, the default parameters are used.
-        auto const key = std::make_pair(lev, rho.getBDKey());
-        auto const it = m_tune_mlmg ? m_parms_map.find(key) : m_parms_map.end();
-        if (it != m_parms_map.end())
+        auto const key = MLMGTuningCache::makeKey(lev, rho.boxArray(), rho.DistributionMap());
+        auto const* cached = m_tune_mlmg ? MLMGTuningCache::find(key) : nullptr;
+        if (cached)
         {
-            m_parms = it->second;
+            m_parms = *cached;
         }
         else if (m_tune_mlmg)
         {
@@ -366,9 +367,7 @@ public:
 
                 if (baseline_ok || (tsolve < t_failed))
                 {
-                    if (m_parms_map.size() > 1000) { m_parms_map.clear(); } // just in case
-
-                    m_parms_map[key] = m_parms;
+                    MLMGTuningCache::insert(key, m_parms);
 
                     if (m_verbose) {
                         std::string msg("MLMG parameters chosen:");
@@ -451,14 +450,7 @@ private:
     using LinOpPair = std::pair<std::unique_ptr<amrex::MLMG>,
                                 std::unique_ptr<amrex::MLNodeLinOp>>;
 
-    struct Parms {
-        bool single_box = false;
-        int mcl = 30; // default in amrex
-        int ags = -1; // default in amrex
-        bool no_gpu_sync = true; // GPU only: single stream and no stream sync
-    };
-
-    inline static std::map<std::pair<int,amrex::FabArrayBase::BDKey>, Parms> m_parms_map;
+    using Parms = MLMGTuningCache::Parms;
 
     Parms m_parms;
     amrex::Geometry m_geom;

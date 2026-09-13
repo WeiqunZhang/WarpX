@@ -21,6 +21,7 @@
 #include "Utils/TextMsg.H"
 #include "Utils/WarpXAlgorithmSelection.H"
 
+#include <ablastr/fields/MLMGTuningCache.H>
 #include <ablastr/fields/MultiFabRegister.H>
 #include <ablastr/profiler/ProfilerWrapper.H>
 
@@ -185,6 +186,9 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
         AllocInitMultiFab(pmf, mf->boxArray(), dm, mf->nComp(), ng, lev, mf->tags()[0]);
         *mf = std::move(*pmf);
     };
+
+    // The MLMG tuning cache is keyed by the layout being replaced.
+    ablastr::fields::MLMGTuningCache::erase(lev, boxArray(lev), DistributionMap(lev));
 
     bool const eb_enabled = EB::enabled();
     if (ba == boxArray(lev))
