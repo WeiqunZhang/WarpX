@@ -2,6 +2,7 @@
 #define ABLASTR_MLMG_WRAPPER_H_
 
 #include <ablastr/fields/MLMGTuningCache.H>
+#include <ablastr/utils/TextMsg.H>
 
 #include <AMReX.H>
 #include <AMReX_Exception.H>
@@ -19,10 +20,16 @@
 #include <algorithm>
 #include <array>
 #include <cfenv>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <new>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace ablastr::fields {
 
