@@ -300,11 +300,16 @@ computePhi (
 
         const int ng = int(grid_type == utils::enums::GridType::Collocated); // ghost cells
 
+        amrex::FabFactory<amrex::FArrayBox> const* fab_factory = nullptr;
+        if constexpr (!std::is_same_v<void, T_FArrayBoxFactory>) {
+            if (eb_farray_box_factory) { fab_factory = eb_farray_box_factory.value()[lev]; }
+        }
+
         MLMGWrapper<T_BoundaryHandler> mlmg_wrapper
             (lev, eb_enabled, is_rz, is_solver_igf_on_lev0,
              dx_scaled, beta_solver, geom[lev], *rho[lev], boundary_handler,
              current_time ? current_time.value() : 0,
-             eb_farray_box_factory ? eb_farray_box_factory.value()[lev] : nullptr,
+             fab_factory,
              max_iters, verbosity, num_final_sweeps,
              relative_tolerance, absolute_tolerance, ng);
 

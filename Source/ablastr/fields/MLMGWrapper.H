@@ -174,8 +174,6 @@ public:
                 l_mlmg->setFinalFillBC(true);
             }
 
-            l_mlmg->setThrowException(true);
-
             return std::make_pair(std::move(l_mlmg), std::move(l_linop));
         };
 
@@ -224,6 +222,7 @@ public:
             bool baseline_ok = false;
             { // base line
                 auto tmp = make_mlmg_linop(info0, rho.boxArray(), rho.DistributionMap(), factory);
+                tmp.first->setThrowException(true); // trial solve: failure is caught, not fatal
                 mcl0 = tmp.second->NMGLevels(0) - 1;
                 // The baseline solve itself might fail.
                 niter0 = max_iters;
@@ -288,6 +287,7 @@ public:
                         } catch (std::bad_alloc const&) {
                             continue; // does not fit in memory
                         }
+                        tmp.first->setThrowException(true);
                         tmp.first->setMaxIter(std::min(max_iters, 2*niter0));
                         for (bool const nosync : no_gpu_sync_options) {
                             tmp.first->setNoGpuSync(nosync);
@@ -335,6 +335,7 @@ public:
                         } catch (std::bad_alloc const&) {
                             continue; // does not fit in memory
                         }
+                        tmp.first->setThrowException(true);
                         tmp.first->setMaxIter(std::min(max_iters, 2*niter0));
                         for (bool const nosync : no_gpu_sync_options) {
                             tmp.first->setNoGpuSync(nosync);
