@@ -54,7 +54,6 @@ public:
         using namespace amrex::literals;
 
         ParmParse const pp("warpx");
-        pp.query("verbose", m_verbose);
         pp.query("tune_mlmg", m_tune_mlmg);
 
         LPInfo info0;
@@ -379,7 +378,7 @@ public:
                 {
                     MLMGTuningCache::insert(key, m_parms);
 
-                    if (m_verbose) {
+                    if (verbosity > 0) {
                         std::string msg("MLMG parameters chosen:");
                         if (m_parms.single_box) { msg += " original boxes agglomerated,"; }
                         msg.append(" max_coarsening_level=").append(std::to_string(m_parms.mcl));
@@ -400,7 +399,7 @@ public:
                     // it will fail then anyway. The result is not cached, so that
                     // the tuning can be attempted again later.
                     m_parms = Parms{};
-                    if (m_verbose) {
+                    if (verbosity > 0) {
                         amrex::Print() << "MLMG tuning failed. Using the default parameters.\n";
                     }
                 }
@@ -473,7 +472,6 @@ private:
     std::unique_ptr<amrex::MLMG> m_mlmg;
     std::unique_ptr<amrex::MLNodeLinOp> m_linop;
     int m_ng;
-    int m_verbose = 1;
     //! Auto-tune the MLMG parameters? (warpx.tune_mlmg)
     bool m_tune_mlmg = false;
 
