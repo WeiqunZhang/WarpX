@@ -55,13 +55,7 @@ struct MLMGTuningCache
 
     static void insert (Key const& key, Parms const& parms)
     {
-        if (!m_finalize_registered) {
-            m_finalize_registered = true;
-            amrex::ExecOnFinalize([] () {
-                m_parms_map.clear();
-                m_finalize_registered = false;
-            });
-        }
+        registerFinalize();
         if (m_parms_map.size() > 10) { m_parms_map.clear(); } // just in case
         m_parms_map[key] = parms;
     }
@@ -84,9 +78,7 @@ struct MLMGTuningCache
     //! Single-Box layout of a level. Rebuilt if the domain or index type changed.
     static SingleBox& singleBox (int lev, amrex::Box const& domain, amrex::IndexType typ)
     {
-        if (m_single_box_map.empty()) {
-            amrex::ExecOnFinalize([] () { m_single_box_map.clear(); });
-        }
+        registerFinalize();
         auto& sb = m_single_box_map[lev];
         if (sb.ba.empty() || sb.domain != domain || sb.ba.ixType() != typ) {
             sb = SingleBox{};
@@ -102,6 +94,19 @@ struct MLMGTuningCache
     static void eraseSingleBox (int lev) { m_single_box_map.erase(lev); }
 
 private:
+    //! Register the clean-up of both maps once per amrex::Initialize.
+    static void registerFinalize ()
+    {
+        if (!m_finalize_registered) {
+            m_finalize_registered = true;
+            amrex::ExecOnFinalize([] () {
+                m_parms_map.clear();
+                m_single_box_map.clear();
+                m_finalize_registered = false;
+            });
+        }
+    }
+
     inline static bool m_tune = false;
     inline static bool m_finalize_registered = false;
     inline static std::map<Key, Parms> m_parms_map;
