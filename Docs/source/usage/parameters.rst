@@ -1353,6 +1353,10 @@ Distribution across MPI ranks and parallelization
     Runtime splitting preserves alignment with the next coarser level.
     Levels with zero total load-balancing cost are not split or merged.
 
+    With the PSATD solver, this option only splits boxes during initialization.
+    Runtime load balancing redistributes existing boxes without splitting or merging them,
+    to preserve the grid sizes validated against the solver's guard-cell requirements at startup.
+
     Splitting during initialization or runtime can produce boxes incompatible with
     :pp:param:`<diag_name>.coarsening_ratio`, even when that ratio divides
     ``amr.blocking_factor``. This causes an error at diagnostic initialization or

@@ -88,7 +88,9 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
         ParmParse const pp0;
         pp0.query("warpx.split_high_density_boxes"
                   ,      split_high_density_boxes);
-        if (split_high_density_boxes)
+        // Runtime splitting does not enforce the PSATD guard-cell requirements.
+        if (split_high_density_boxes &&
+            electromagnetic_solver_id != ElectromagneticSolverAlgo::PSATD)
         {
             Real split_high_density_boxes_threshold = 1.1;
             int split_high_density_boxes_min_box_size = 8;
