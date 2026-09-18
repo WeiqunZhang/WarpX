@@ -88,7 +88,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
         ParmParse const pp0;
         pp0.query("warpx.split_high_density_boxes"
                   ,      split_high_density_boxes);
-        // Runtime splitting does not enforce the PSATD guard-cell requirements.
+        // PSATD runtime load balancing only redistributes existing boxes.
         if (split_high_density_boxes &&
             electromagnetic_solver_id != ElectromagneticSolverAlgo::PSATD)
         {
@@ -98,6 +98,34 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                       ,      split_high_density_boxes_threshold);
             pp0.query("warpx.split_high_density_boxes_min_box_size"
                       ,      split_high_density_boxes_min_box_size);
+
+            // Preserve the bounds checked by CheckGuardCells(), in fine-level cell units.
+            // Use allocated fields: their guard widths can differ from one another and by level.
+            IntVect min_child_size(1);
+            auto const require_guard_cells = [&min_child_size] (MultiFab const& mf) {
+                min_child_size.max((mf.nGrowVect() + 1) * mf.boxArray().crseRatio());
+            };
+            using warpx::fields::FieldType;
+            using ablastr::fields::Direction;
+            for (auto const field : {FieldType::Efield_fp, FieldType::Bfield_fp,
+                                     FieldType::current_fp, FieldType::Efield_avg_fp,
+                                     FieldType::Bfield_avg_fp, FieldType::Efield_cp,
+                                     FieldType::Bfield_cp, FieldType::current_cp,
+                                     FieldType::Efield_avg_cp, FieldType::Bfield_avg_cp})
+            {
+                for (int dir = 0; dir < 3; ++dir) {
+                    if (m_fields.has(field, Direction{dir}, lev)) {
+                        require_guard_cells(*m_fields.get(field, Direction{dir}, lev));
+                    }
+                }
+            }
+            for (auto const field : {FieldType::rho_fp, FieldType::F_fp, FieldType::G_fp,
+                                     FieldType::rho_cp, FieldType::F_cp, FieldType::G_cp})
+            {
+                if (m_fields.has(field, lev)) {
+                    require_guard_cells(*m_fields.get(field, lev));
+                }
+            }
 
             Real const total_costs = std::accumulate(rcost.begin(), rcost.end(), Real(0));
             Real const target_cost = total_costs / Real(nprocs) * split_high_density_boxes_threshold;
@@ -128,7 +156,8 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                             auto const [dir, len] = dlpair[idim];
                             // Keep both children aligned with the coarse patch.
                             if (len % split_multiple[dir] == 0 &&
-                                len > split_high_density_boxes_min_box_size)
+                                len > split_high_density_boxes_min_box_size &&
+                                len/2 >= min_child_size[dir])
                             {
                                 Box const b2 = b.chop(dir, b.smallEnd(dir) + len/2);
                                 bltmp.push_back(b);

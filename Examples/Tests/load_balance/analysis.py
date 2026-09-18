@@ -71,6 +71,7 @@ for row in costs:
                     "cost": float(row[start]),
                     "level": int(float(row[start + 2])),
                     "lo": (int(float(row[start + 3])), int(float(row[start + 4]))),
+                    "cells": int(float(row[start + 6])),
                     "particles": int(float(row[start + 7])),
                 }
             )
@@ -107,6 +108,18 @@ elif case == "refined_ratio4":
     assert len(new_boxes) > len(old_boxes), (old_boxes, new_boxes)
     # A split at a non-multiple of 4 gives neighboring boxes overlapping coarse cells.
     assert all(all(index % 4 == 0 for index in box["lo"]) for box in new_boxes)
+elif case == "guard_cells":
+    # Rho, whose ghosts exceed those of E/B and J, sets the strict lower bound.
+    # Coarse patches have the same ghost widths but half as many valid cells.
+    for lev, (nx, nz) in enumerate(((16, 8), (32, 16))):
+        boxes = [box for box in after if box["level"] == lev]
+        extent = 32 * 2**lev
+        assert {box["lo"] for box in boxes} == {
+            (x, z) for x in range(0, extent, nx) for z in range(0, extent, nz)
+        }, boxes
+        # LoadBalanceCosts counts points of Ex, which is nodal along z.
+        assert all(box["cells"] == nx * (nz + 1) for box in boxes), boxes
+        assert len(boxes) > sum(box["level"] == lev for box in before)
 else:
     raise ValueError(f"Unknown load-balance case: {case}")
 

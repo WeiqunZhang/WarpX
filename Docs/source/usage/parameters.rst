@@ -1383,6 +1383,8 @@ Distribution across MPI ranks and parallelization
     less than or equal to this number, it will not be split.
     This is a stopping threshold for the parent box; the resulting children can
     have shorter sides than this value.
+    Runtime splitting also requires each child's fine and coarse patches to have
+    more valid cells than guard cells in every direction for the allocated fields.
 
 
 .. _running-cpp-parameters-particle:

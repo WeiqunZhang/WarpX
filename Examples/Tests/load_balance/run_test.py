@@ -21,6 +21,7 @@ input_index = next(
 cases = {
     "split_merge": [
         ("refined_ratio4", primary_input),
+        ("guard_cells", "inputs_base_2d_guard_cells"),
         ("merge", "inputs_base_2d_merge"),
     ],
     "costs": [("zero_cost", primary_input)],
