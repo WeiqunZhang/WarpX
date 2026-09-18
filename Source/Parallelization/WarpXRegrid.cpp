@@ -64,9 +64,10 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
     return std::make_pair(amrex::BoxArray{},amrex::DistributionMapping{});
 #else
 
-    auto comm = ParallelContext::CommunicatorSub();
-    int myproc = ParallelContext::MyProcSub();
-    int nprocs = ParallelContext::NProcsSub();
+    // The communicator type is implementation-dependent and need not be a pointer.
+    auto comm = ParallelContext::CommunicatorSub(); // NOLINT
+    int const myproc = ParallelContext::MyProcSub();
+    int const nprocs = ParallelContext::NProcsSub();
 
     auto const& cst = *costs[lev];
     auto const& ba = cst.boxArray();
@@ -84,7 +85,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
     int doLoadBalance = 0;
     if (myproc == 0) {
         bool split_high_density_boxes = false;
-        ParmParse pp0;
+        ParmParse const pp0;
         pp0.query("warpx.split_high_density_boxes"
                   ,      split_high_density_boxes);
         if (split_high_density_boxes)
@@ -127,7 +128,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                             if (len % split_multiple[dir] == 0 &&
                                 len > split_high_density_boxes_min_box_size)
                             {
-                                Box b2 = b.chop(dir, b.smallEnd(dir) + len/2);
+                                Box const b2 = b.chop(dir, b.smallEnd(dir) + len/2);
                                 bltmp.push_back(b);
                                 bltmp.push_back(b2);
                                 coststmp.push_back(rcost[i]*Real(0.5));
@@ -137,9 +138,9 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                             }
                         }
                     } else if (i < nboxes-1) {
-                        Real merged_cost = rcost[i] + rcost[i+1];
+                        Real const merged_cost = rcost[i] + rcost[i+1];
                         if (merged_cost < Real(0.9)*target_cost) {
-                            Box merged_box = amrex::minBox(blv[i], blv[i+1]);
+                            Box const merged_box = amrex::minBox(blv[i], blv[i+1]);
                             if ((merged_box.numPts() == blv[i].numPts() + blv[i+1].numPts()) &&
                                 merged_box.length().allLE(mgs))
                             {
@@ -168,7 +169,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
             if (any_changed) {
                 doLoadBalance = -int(newbl.size());
                 newba.define(newbl);
-                Vector<Long> lcost = DistributionMapping::ConvertCostRealToLong(rcost);
+                Vector<Long> const lcost = DistributionMapping::ConvertCostRealToLong(rcost);
                 Real eff = -1;
                 if (load_balance_with_sfc) {
                     newdm.SFCProcessorMap(newba, lcost, nprocs, eff, false);
@@ -188,7 +189,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
 
         if (newba.empty() && (load_balance_efficiency_ratio_threshold > 0)) {
             // Load balance the existing BoxArray
-            Vector<Long> lcost = DistributionMapping::ConvertCostRealToLong(rcost);
+            Vector<Long> const lcost = DistributionMapping::ConvertCostRealToLong(rcost);
             Real current_eff = -1;
             DistributionMapping::ComputeDistributionMappingEfficiency(dm, lcost, &current_eff);
             Real eff = -1;
