@@ -1209,7 +1209,7 @@ Distribution across MPI ranks and parallelization
     Use 0 to disable load balancing.
 
     Runtime load balancing is not supported with implicit or semi-implicit
-    evolution schemes or with the ECT solver. For these solvers, set
+    evolution schemes (including Darwin) or with the ECT solver. For these solvers, set
     ``algo.load_balance_intervals = 0`` when using multiple MPI ranks.
 
     When performing load balancing, WarpX measures the wall time for

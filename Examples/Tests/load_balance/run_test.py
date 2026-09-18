@@ -15,7 +15,9 @@ from pathlib import Path
 group = sys.argv[1]
 command = sys.argv[2:]
 primary_input = f"inputs_test_2d_load_balance_{group}"
-input_index = command.index(primary_input)
+input_index = next(
+    i for i, arg in enumerate(command) if Path(arg).name == primary_input
+)
 cases = {
     "split_merge": [
         ("refined_ratio4", primary_input),
