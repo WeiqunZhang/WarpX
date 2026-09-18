@@ -1,5 +1,5 @@
-# Stationary particles and zero fields make any field corruption or particle
-# loss during a layout change directly observable.
+# Zero fields expose unwritten field data, and particle counts detect particle
+# loss during a layout change. The merge case also checks nonzero fields.
 max_step = 4
 amr.n_cell = 32 32
 amr.max_grid_size = 16

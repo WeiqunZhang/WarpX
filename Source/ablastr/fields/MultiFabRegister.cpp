@@ -283,9 +283,12 @@ namespace ablastr::fields
                     if (new_mf_ba == current_mf_ba) {
                         new_mf.Redistribute(mf, 0, 0, mf.nComp(), ng);
                     } else {
-                        // Refresh old ghosts so they cannot overwrite valid data during the copy.
+                        // Refresh interior ghosts and overlapping exterior ghosts before
+                        // they can overwrite current boundary values during the copy.
+                        // Multi-ghost exchanges require at least two ghosts in every direction.
+                        mf.setMultiGhost(ng.allGE(2));
                         mf.FillBoundary();
-                        // Preserve exterior ghosts, which FillBoundary cannot reconstruct.
+                        // Preserve exterior ghosts, which ordinary FillBoundary cannot rebuild.
                         new_mf.ParallelCopy(mf, 0, 0, mf.nComp(), ng, ng);
                     }
                 }

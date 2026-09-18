@@ -16,16 +16,34 @@ case = sys.argv[1]
 path = Path("diags/reducedfiles")
 
 
-def read_diagnostic(name):
-    lines = (path / f"{name}.txt").read_text().splitlines()
+def read_diagnostic(name, directory=path):
+    lines = (directory / f"{name}.txt").read_text().splitlines()
     return lines[0].split(), [line.split() for line in lines[1:] if line.strip()]
 
 
 _, energy = read_diagnostic("FE")
 assert [int(row[0]) for row in energy] == list(range(5))
-for row in energy:
-    # No initial fields or particle velocities: these must remain exactly zero.
-    assert all(float(value) == 0.0 for value in row[2:]), row
+if case == "merge":
+    assert all(float(row[2]) > 0.0 for row in energy), energy
+    for name in ("FE", "FP"):
+        header, values = read_diagnostic(name)
+        ref_header, reference = read_diagnostic(name, Path("reference") / path)
+        assert header == ref_header
+        assert len(values) == len(reference)
+        assert {int(row[0]) for row in values} == set(range(5))
+        assert all(len(row) == len(header) for row in values + reference)
+        # Compare each field component on its own scale, including near-zero values.
+        for column in range(len(header)):
+            expected = [float(row[column]) for row in reference]
+            scale = max(abs(value) for value in expected)
+            for row, value in zip(values, expected):
+                assert math.isclose(
+                    float(row[column]), value, rel_tol=1.0e-11, abs_tol=1.0e-11 * scale
+                ), (name, row, column, value)
+else:
+    for row in energy:
+        # No initial fields or particle velocities: these must remain exactly zero.
+        assert all(float(value) == 0.0 for value in row[2:]), row
 
 _, efficiency = read_diagnostic("LBE")
 assert [int(row[0]) for row in efficiency] == list(range(5))

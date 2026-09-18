@@ -33,4 +33,10 @@ for case, inputs in cases[group]:
     work.mkdir(exist_ok=True)
     command[input_index] = inputs
     subprocess.run(command, cwd=work, check=True)
+    if case == "merge":
+        reference = work / "reference"
+        reference.mkdir(exist_ok=True)
+        subprocess.run(
+            [*command, "algo.load_balance_intervals=0"], cwd=reference, check=True
+        )
     subprocess.run([sys.executable, str(analysis), case], cwd=work, check=True)

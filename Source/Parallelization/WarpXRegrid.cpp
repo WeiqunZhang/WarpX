@@ -178,6 +178,11 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                     newdm.KnapSackProcessorMap(lcost, nprocs, &eff, true, nmax, false);
                 }
                 efficiency = eff;
+                if (verbose) {
+                    amrex::Print(0, comm) << "Load balance (level " << lev << "): boxes "
+                        << ba.size() << " -> " << newba.size()
+                        << ", estimated efficiency = " << eff << ", accepted\n";
+                }
             }
         } // end of if (split_high_density_boxes)
 
@@ -197,6 +202,12 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
             if (eff > load_balance_efficiency_ratio_threshold * current_eff) {
                 doLoadBalance = 1;
                 efficiency = eff;
+            }
+            if (verbose) {
+                amrex::Print(0, comm) << "Load balance (level " << lev
+                    << "): current efficiency = " << current_eff
+                    << ", proposed efficiency = " << eff
+                    << (doLoadBalance ? ", accepted\n" : ", skipped\n");
             }
         }
     }
