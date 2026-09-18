@@ -138,7 +138,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                         }
                     } else if (i < nboxes-1) {
                         Real merged_cost = rcost[i] + rcost[i+1];
-                        if (merged_cost < Real(0.99)*target_cost) {
+                        if (merged_cost < Real(0.9)*target_cost) {
                             Box merged_box = amrex::minBox(blv[i], blv[i+1]);
                             if ((merged_box.numPts() == blv[i].numPts() + blv[i+1].numPts()) &&
                                 merged_box.length().allLE(mgs))
