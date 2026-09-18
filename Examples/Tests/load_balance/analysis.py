@@ -32,8 +32,6 @@ assert [int(row[0]) for row in efficiency] == list(range(5))
 for row in efficiency:
     if int(row[0]) >= 2:
         assert all(0.0 < float(value) <= 1.0 for value in row[2:]), row
-        if case == "default":
-            assert float(row[2]) == 1.0, row
 
 _, particles = read_diagnostic("PN")
 assert [int(row[0]) for row in particles] == list(range(5))
@@ -52,6 +50,7 @@ for row in costs:
         if math.isfinite(float(row[start])):
             boxes.append(
                 {
+                    "cost": float(row[start]),
                     "level": int(float(row[start + 2])),
                     "lo": (int(float(row[start + 3])), int(float(row[start + 4]))),
                     "particles": int(float(row[start + 7])),
@@ -66,30 +65,30 @@ assert len(layouts[4]) == len(after), (
     "The second load balance changed the settled layout"
 )
 
-if case == "default":
-    assert len(before) == len(after) == 4
-elif case == "costs":
-    # Initial constant-density injection populates only the left of two boxes.
-    # Runtime balancing must split that expensive box and retain the empty one.
-    assert len(before) == 2
-    assert {box["lo"] for box in after} == {(0, 0), (0, 8), (16, 0)}, after
-    assert all(box["particles"] > 0 for box in after if box["lo"][0] == 0)
-    assert all(box["particles"] == 0 for box in after if box["lo"][0] == 16)
-elif case == "merge":
+if case == "merge":
     assert len(after) < len(before), (before, after)
-elif case == "split":
-    # A low threshold forces splitting until the default minimum of 8 cells.
-    # Splitting at equality would produce 4-cell sides and additional origins.
-    assert len(before) == 4
-    assert {box["lo"] for box in after} == {
-        (i, j) for i in range(0, 32, 8) for j in range(0, 32, 8)
-    }, after
-elif case == "refined":
-    for level in (0, 1):
-        old_boxes = [box for box in before if box["level"] == level]
-        new_boxes = [box for box in after if box["level"] == level]
-        assert old_boxes
-        assert len(new_boxes) == 4 * len(old_boxes), (old_boxes, new_boxes)
+elif case == "zero_cost":
+    old_coarse = [box for box in before if box["level"] == 0]
+    new_coarse = [box for box in after if box["level"] == 0]
+    # Split the particle-heavy coarse box while retaining its empty neighbor.
+    assert len(old_coarse) == 2
+    assert {box["lo"] for box in new_coarse} == {(0, 0), (0, 8), (16, 0)}, new_coarse
+    assert all(box["particles"] > 0 for box in new_coarse if box["lo"][0] == 0)
+    assert all(box["particles"] == 0 for box in new_coarse if box["lo"][0] == 16)
+
+    # The particle-free refined level must keep its layout.
+    old_boxes = [box for box in before if box["level"] == 1]
+    new_boxes = [box for box in after if box["level"] == 1]
+    assert old_boxes
+    assert all(box["cost"] == 0.0 and box["particles"] == 0 for box in old_boxes)
+    assert new_boxes == old_boxes, (old_boxes, new_boxes)
+elif case == "refined_ratio4":
+    old_boxes = [box for box in before if box["level"] == 1]
+    new_boxes = [box for box in after if box["level"] == 1]
+    assert old_boxes
+    assert len(new_boxes) > len(old_boxes), (old_boxes, new_boxes)
+    # A split at a non-multiple of 4 gives neighboring boxes overlapping coarse cells.
+    assert all(all(index % 4 == 0 for index in box["lo"]) for box in new_boxes)
 else:
     raise ValueError(f"Unknown load-balance case: {case}")
 

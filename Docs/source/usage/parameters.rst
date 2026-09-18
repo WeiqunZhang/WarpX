@@ -1206,12 +1206,16 @@ Distribution across MPI ranks and parallelization
     Using the `Time intervals`_ syntax, this string defines the timesteps at which
     WarpX should try to redistribute the work across MPI ranks, in order to have
     better load balancing.
-    Use 0 to disable load_balancing.
+    Use 0 to disable load balancing.
+
+    Runtime load balancing is not supported with implicit or semi-implicit
+    evolution schemes or with the ECT solver. For these solvers, set
+    ``algo.load_balance_intervals = 0`` when using multiple MPI ranks.
 
     When performing load balancing, WarpX measures the wall time for
     computational parts of the PIC cycle. It then uses this data to decide
-    how to redistribute the subdomains across MPI ranks. (Each subdomain
-    is unchanged, but its owner is changed in order to have better performance.)
+    how to redistribute the subdomains across MPI ranks. Subdomains can also
+    be split or merged when :pp:param:`warpx.split_high_density_boxes` is enabled.
     This relies on each MPI rank handling several (in fact many) subdomains
     (see ``max_grid_size``).
 
@@ -1343,6 +1347,8 @@ Distribution across MPI ranks and parallelization
     merge boxes at runtime load-balancing intervals. Boxes are merged when
     their combined cost is below the threshold and their combined size does
     not exceed ``amr.max_grid_size``.
+    Runtime splitting preserves alignment with the next coarser level.
+    Levels with zero total load-balancing cost are not split or merged.
 
 .. pp:param:: warpx.split_high_density_boxes_threshold
     :type: ``float``

@@ -72,6 +72,7 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
     auto const& ba = cst.boxArray();
     auto const& dm = cst.DistributionMap();
     auto const& mgs = maxGridSize(lev);
+    auto const split_multiple = (lev > 0) ? 2*refRatio(lev-1) : IntVect(4);
 
     BoxList newbl{};
     BoxArray newba{};
@@ -101,13 +102,14 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
             newbl = ba.boxList();
             bool any_changed = false;
             for (int it = 0; it < 8; ++it) {
+                bool iteration_changed = false;
                 BoxList bltmp;
                 Vector<Real> coststmp;
                 Vector<Box>& blv = newbl.data();
                 auto nboxes = int(blv.size());
                 for (int i = 0; i < nboxes; ++i) {
                     bool this_changed = false;
-                    if (rcost[i] >= target_cost) {
+                    if (total_costs > Real(0) && rcost[i] >= target_cost) {
                         Box b = blv[i];
                         std::array<std::pair<int,int>,AMREX_SPACEDIM> dlpair;
                         for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
@@ -121,7 +123,10 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                                          });
                         for (int idim = AMREX_SPACEDIM-1; idim >= 0; --idim) {
                             auto const [dir, len] = dlpair[idim];
-                            if (len % 4 == 0 && len > split_high_density_boxes_min_box_size) {
+                            // Keep both children aligned with the coarse patch.
+                            if (len % split_multiple[dir] == 0 &&
+                                len > split_high_density_boxes_min_box_size)
+                            {
                                 Box b2 = b.chop(dir, b.smallEnd(dir) + len/2);
                                 bltmp.push_back(b);
                                 bltmp.push_back(b2);
@@ -146,13 +151,14 @@ WarpX::LoadBalanceMakeNewLayout (int lev, Real& efficiency)
                         }
                     }
                     if (this_changed) {
-                        any_changed = true;
+                        iteration_changed = true;
                     } else {
                         bltmp.push_back(blv[i]);
                         coststmp.push_back(rcost[i]);
                     }
                 }
-                if (any_changed) {
+                if (iteration_changed) {
+                    any_changed = true;
                     std::swap(newbl, bltmp);
                     std::swap(rcost, coststmp);
                 } else {
@@ -258,7 +264,21 @@ WarpX::CheckLoadBalance (int step)
 void
 WarpX::LoadBalance ()
 {
-    if (ParallelDescriptor::NProcs() == 1) { return; }
+    if (ParallelContext::NProcsSub() == 1) {
+        for (int lev = 0; lev <= finestLevel(); ++lev) {
+            setLoadBalanceEfficiency(lev, Real(1));
+        }
+        return;
+    }
+
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        evolve_scheme == EvolveScheme::Explicit,
+        "Runtime load balancing requires an explicit evolution scheme. "
+        "Set algo.load_balance_intervals = 0.");
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        electromagnetic_solver_id != ElectromagneticSolverAlgo::ECT,
+        "Runtime load balancing is not supported with the ECT solver. "
+        "Set algo.load_balance_intervals = 0.");
 
     ABLASTR_PROFILE_REGION("LoadBalance");
     ABLASTR_PROFILE("WarpX::LoadBalance()");
@@ -321,7 +341,12 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
 
     bool const eb_enabled = EB::enabled();
 
-    if (ParallelDescriptor::NProcs() == 1) { return; }
+    if (ParallelContext::NProcsSub() == 1) {
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            ba == boxArray(lev),
+            "RemakeLevel cannot change the BoxArray with a single MPI process.");
+        return;
+    }
 
     m_fields.remake_level(lev, ba, dm);
 
@@ -468,8 +493,7 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
     // Re-initialize diagnostic functors that stores pointers to the user-requested fields at level, lev.
     multi_diags->InitializeFieldFunctors( lev );
 
-    // Reduced diagnostics
-    // not needed yet // xxxxx is that still true if boxarray has changed?
+    // LoadBalance refreshes reduced diagnostics after all levels have been remade.
 }
 
 void

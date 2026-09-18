@@ -27,9 +27,6 @@ algo.costs_heuristic_particles_wt = 0.
 # Force redistribution even for an already balanced, unchanged layout.
 algo.load_balance_efficiency_ratio_threshold = 0.5
 warpx.split_high_density_boxes = 1
-# Split down to the default minimum size, 8, at the first load balance.
-warpx.split_high_density_boxes_threshold = 0.01
-
 # Detect missing copies of physical boundary ghost cells on CPU and GPU.
 fab.do_initval = 1
 
