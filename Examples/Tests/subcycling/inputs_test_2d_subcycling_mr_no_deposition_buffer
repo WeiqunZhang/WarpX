@@ -1,0 +1,8 @@
+# base input parameters
+FILE = inputs_base_2d
+
+# test input parameters
+# Field gather buffer without current deposition buffer: particles in the
+# gather buffer deposit on the fine patch, no coarse-patch buffer is allocated.
+warpx.n_current_deposition_buffer = 0
+warpx.n_field_gather_buffer = 2
