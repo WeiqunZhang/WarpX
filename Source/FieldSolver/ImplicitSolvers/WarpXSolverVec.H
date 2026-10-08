@@ -118,6 +118,7 @@ public:
     WarpXSolverVec& operator= ( WarpXSolverVec&&  a_solver_vec ) noexcept
     {
         if (this != &a_solver_vec) {
+            DeleteMultiFabs();
             m_array_vec = std::move(a_solver_vec.m_array_vec);
             m_scalar_vec = std::move(a_solver_vec.m_scalar_vec);
             m_array_type = a_solver_vec.m_array_type;
@@ -321,6 +322,9 @@ public:
     [[nodiscard]] inline static const auto& getDOFsObject () { return m_dofs; }
 
 private:
+
+    /** Delete the owned MultiFabs and reset the pointers */
+    void DeleteMultiFabs ();
 
     bool m_is_defined = false;
 
