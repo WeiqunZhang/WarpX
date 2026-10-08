@@ -12,12 +12,23 @@ std::unique_ptr<WarpXSolverDOF> WarpXSolverVec::m_dofs = nullptr;
 
 WarpXSolverVec::~WarpXSolverVec ()
 {
+    DeleteMultiFabs();
+}
+
+void WarpXSolverVec::DeleteMultiFabs ()
+{
     for (auto & lvl : m_array_vec)
     {
         for (int i =0; i<3; ++i)
         {
             delete lvl[i];
+            lvl[i] = nullptr;
         }
+    }
+    for (auto & mf : m_scalar_vec)
+    {
+        delete mf;
+        mf = nullptr;
     }
 }
 
@@ -47,7 +58,7 @@ void WarpXSolverVec::Define ( WarpX*  a_WarpX,
         m_array_type = FieldType::Bfield_fp;
     }
     else if (m_vector_type_name=="vector_potential_fp_nodal") {
-        m_array_type = FieldType::vector_potential_fp;
+        m_array_type = FieldType::vector_potential_fp_nodal;
     }
     else if (m_vector_type_name!="none") {
         WARPX_ABORT_WITH_MESSAGE(a_vector_type_name+" "

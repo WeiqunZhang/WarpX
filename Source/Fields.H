@@ -41,7 +41,6 @@ namespace warpx::fields
         F_fp, /**< Used for divE cleaning */
         G_fp, /**< Used for divB cleaning */
         phi_fp, /**< Obtained by the Poisson solver, for labframe electrostatic */
-        vector_potential_fp, /**< Obtained by the magnetostatic solver */
         vector_potential_fp_nodal,
         vector_potential_grad_buf_e_stag,
         vector_potential_grad_buf_b_stag,
@@ -111,7 +110,6 @@ namespace warpx::fields
         FieldType::current_fp_vay,
         FieldType::current_buf,
         FieldType::current_store,
-        FieldType::vector_potential_fp,
         FieldType::vector_potential_fp_nodal,
         FieldType::vector_potential_grad_buf_e_stag,
         FieldType::vector_potential_grad_buf_b_stag,
