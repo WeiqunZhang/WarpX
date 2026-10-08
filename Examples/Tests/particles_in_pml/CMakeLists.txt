@@ -22,6 +22,16 @@ add_warpx_test(
 )
 
 add_warpx_test(
+    test_2d_particles_in_pml_mr_restart  # name
+    2  # dims
+    2  # nprocs
+    "inputs_test_2d_particles_in_pml_mr amr.restart='../test_2d_particles_in_pml_mr/diags/chk000150'"  # inputs
+    "analysis_default_restart.py --path diags/diag1000300"  # analysis
+    "analysis_default_regression.py --path diags/diag1000300"  # checksum
+    test_2d_particles_in_pml_mr  # dependency
+)
+
+add_warpx_test(
     test_3d_particles_in_pml  # name
     3  # dims
     2  # nprocs
