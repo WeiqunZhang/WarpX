@@ -702,7 +702,8 @@ PML::PML (const int lev, const BoxArray& grid_ba,
           int max_guard_EB, const amrex::Real v_sigma_sb,
           ablastr::fields::MultiFabRegister& fields,
           const amrex::IntVect do_pml_Lo, const amrex::IntVect do_pml_Hi)
-    : m_dive_cleaning(do_pml_dive_cleaning),
+    : m_lev(lev),
+      m_dive_cleaning(do_pml_dive_cleaning),
       m_divb_cleaning(do_pml_divb_cleaning),
       m_fill_guards_fields(fill_guards_fields),
       m_fill_guards_current(fill_guards_current),
@@ -1256,10 +1257,10 @@ PML::CheckPoint (
 {
     using ablastr::fields::Direction;
 
-    if (fields.has_vector(FieldType::pml_E_fp, 0))
+    if (fields.has_vector(FieldType::pml_E_fp, m_lev))
     {
-        ablastr::fields::VectorField pml_E_fp = fields.get_alldirs(FieldType::pml_E_fp, 0);
-        ablastr::fields::VectorField pml_B_fp = fields.get_alldirs(FieldType::pml_B_fp, 0);
+        ablastr::fields::VectorField pml_E_fp = fields.get_alldirs(FieldType::pml_E_fp, m_lev);
+        ablastr::fields::VectorField pml_B_fp = fields.get_alldirs(FieldType::pml_B_fp, m_lev);
         VisMF::AsyncWrite(*pml_E_fp[0], dir+"_Ex_fp");
         VisMF::AsyncWrite(*pml_E_fp[1], dir+"_Ey_fp");
         VisMF::AsyncWrite(*pml_E_fp[2], dir+"_Ez_fp");
@@ -1268,10 +1269,10 @@ PML::CheckPoint (
         VisMF::AsyncWrite(*pml_B_fp[2], dir+"_Bz_fp");
     }
 
-    if (fields.has_vector(FieldType::pml_E_cp, 0))
+    if (fields.has_vector(FieldType::pml_E_cp, m_lev))
     {
-        ablastr::fields::VectorField pml_E_cp = fields.get_alldirs(FieldType::pml_E_cp, 0);
-        ablastr::fields::VectorField pml_B_cp = fields.get_alldirs(FieldType::pml_B_cp, 0);
+        ablastr::fields::VectorField pml_E_cp = fields.get_alldirs(FieldType::pml_E_cp, m_lev);
+        ablastr::fields::VectorField pml_B_cp = fields.get_alldirs(FieldType::pml_B_cp, m_lev);
         VisMF::AsyncWrite(*pml_E_cp[0], dir+"_Ex_cp");
         VisMF::AsyncWrite(*pml_E_cp[1], dir+"_Ey_cp");
         VisMF::AsyncWrite(*pml_E_cp[2], dir+"_Ez_cp");
@@ -1289,10 +1290,10 @@ PML::Restart (
 {
     using ablastr::fields::Direction;
 
-    if (fields.has_vector(FieldType::pml_E_fp, 0))
+    if (fields.has_vector(FieldType::pml_E_fp, m_lev))
     {
-        ablastr::fields::VectorField pml_E_fp = fields.get_alldirs(FieldType::pml_E_fp, 0);
-        ablastr::fields::VectorField pml_B_fp = fields.get_alldirs(FieldType::pml_B_fp, 0);
+        ablastr::fields::VectorField pml_E_fp = fields.get_alldirs(FieldType::pml_E_fp, m_lev);
+        ablastr::fields::VectorField pml_B_fp = fields.get_alldirs(FieldType::pml_B_fp, m_lev);
         VisMF::Read(*pml_E_fp[0], dir+"_Ex_fp");
         VisMF::Read(*pml_E_fp[1], dir+"_Ey_fp");
         VisMF::Read(*pml_E_fp[2], dir+"_Ez_fp");
@@ -1301,10 +1302,10 @@ PML::Restart (
         VisMF::Read(*pml_B_fp[2], dir+"_Bz_fp");
     }
 
-    if (fields.has_vector(FieldType::pml_E_cp, 0))
+    if (fields.has_vector(FieldType::pml_E_cp, m_lev))
     {
-        ablastr::fields::VectorField pml_E_cp = fields.get_alldirs(FieldType::pml_E_cp, 0);
-        ablastr::fields::VectorField pml_B_cp = fields.get_alldirs(FieldType::pml_B_cp, 0);
+        ablastr::fields::VectorField pml_E_cp = fields.get_alldirs(FieldType::pml_E_cp, m_lev);
+        ablastr::fields::VectorField pml_B_cp = fields.get_alldirs(FieldType::pml_B_cp, m_lev);
         VisMF::Read(*pml_E_cp[0], dir+"_Ex_cp");
         VisMF::Read(*pml_E_cp[1], dir+"_Ey_cp");
         VisMF::Read(*pml_E_cp[2], dir+"_Ez_cp");

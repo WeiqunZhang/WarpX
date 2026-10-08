@@ -210,6 +210,8 @@ public:
 private:
     bool m_ok;
 
+    int m_lev;
+
     bool m_dive_cleaning;
     bool m_divb_cleaning;
 
