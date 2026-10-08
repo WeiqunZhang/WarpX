@@ -514,6 +514,7 @@ PhysicalParticleContainer::Evolve (ablastr::fields::MultiFabRegister& fields,
 
     const bool has_rho = fields.has(FieldType::rho_fp, lev);
     const bool has_J_buf = fields.has_vector(FieldType::current_buf, lev);
+    const bool has_rho_buf = fields.has(FieldType::rho_buf, lev);
     const bool has_E_cax = fields.has_vector(FieldType::Efield_cax, lev);
     const bool has_buffer = has_E_cax || has_J_buf;
 
@@ -623,7 +624,7 @@ PhysicalParticleContainer::Evolve (ablastr::fields::MultiFabRegister& fields,
                 amrex::MultiFab* rho = fields.get(FieldType::rho_fp, lev);
                 DepositCharge(pti, wp, ion_lev, rho, 0, 0,
                               np_to_deposit, thread_num, lev, lev);
-                if (has_buffer){
+                if (has_rho_buf){
                     amrex::MultiFab* crho = fields.get(FieldType::rho_buf, lev);
                     DepositCharge(pti, wp, ion_lev, crho, 0, np_to_deposit,
                                   np-np_to_deposit, thread_num, lev, lev-1);
@@ -758,7 +759,7 @@ PhysicalParticleContainer::Evolve (ablastr::fields::MultiFabRegister& fields,
                                        0, np_to_deposit, thread_num,
                                        lev, lev, dt, relative_time, push_type);
                     }
-                    if (has_buffer)
+                    if (has_J_buf)
                     {
                         // Deposit in buffers
                         amrex::MultiFab * cjx = fields.get(FieldType::current_buf, Direction{0}, lev);
@@ -833,7 +834,7 @@ PhysicalParticleContainer::Evolve (ablastr::fields::MultiFabRegister& fields,
 
                     DepositCharge(pti, wp, ion_lev, rho, 1, 0,
                                   np_to_deposit, thread_num, lev, lev);
-                    if (has_buffer){
+                    if (has_rho_buf){
                         amrex::MultiFab* crho = fields.get(FieldType::rho_buf, lev);
                         DepositCharge(pti, wp, ion_lev, crho, 1, np_to_deposit,
                                       np-np_to_deposit, thread_num, lev, lev-1);
