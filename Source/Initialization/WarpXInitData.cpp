@@ -176,15 +176,8 @@ namespace
      * \brief Check that the number of guard cells is smaller than the number of valid cells,
      * for a given MultiFab, and abort otherwise.
      */
-    void CheckGuardCells (
-        ablastr::fields::MultiFabRegister& fields,
-        const std::string& mf_name,
-        int lev
-    )
+    void CheckGuardCells (amrex::MultiFab const& mf)
     {
-        if (!fields.has(mf_name, lev)) { return; }
-        auto & mf = *fields.get(mf_name, lev);
-
         for (amrex::MFIter mfi(mf); mfi.isValid(); ++mfi)
         {
             const amrex::IntVect vc = mfi.validbox().enclosedCells().size();
@@ -198,6 +191,29 @@ namespace
                 " or increase the grid size by changing domain decomposition.";
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(vc.allGT(gc), ss_msg.str());
         }
+    }
+
+    /** \brief CheckGuardCells for a scalar field in the register, if it exists. */
+    void CheckGuardCells (
+        ablastr::fields::MultiFabRegister& fields,
+        warpx::fields::FieldType field_type,
+        int lev
+    )
+    {
+        if (!fields.has(field_type, lev)) { return; }
+        CheckGuardCells(*fields.get(field_type, lev));
+    }
+
+    /** \brief CheckGuardCells for all components of a vector field in the register, if it exists. */
+    void CheckGuardCells (
+        ablastr::fields::MultiFabRegister& fields,
+        warpx::fields::FieldType field_type,
+        ablastr::fields::Direction dir,
+        int lev
+    )
+    {
+        if (!fields.has(field_type, dir, lev)) { return; }
+        CheckGuardCells(*fields.get(field_type, dir, lev));
     }
 
     /**
@@ -1553,44 +1569,47 @@ void WarpX::ComputeExternalFieldOnGridUsingParser (
 
 void WarpX::CheckGuardCells()
 {
+    using ablastr::fields::Direction;
+    using warpx::fields::FieldType;
+
     for (int lev = 0; lev <= max_level; ++lev)
     {
         for (int dim = 0; dim < 3; ++dim)
         {
-            ::CheckGuardCells(m_fields, "Efield_fp[" + std::to_string(dim) + "]", lev);
-            ::CheckGuardCells(m_fields, "Bfield_fp[" + std::to_string(dim) + "]", lev);
-            ::CheckGuardCells(m_fields, "current_fp[" + std::to_string(dim) + "]", lev);
+            ::CheckGuardCells(m_fields, FieldType::Efield_fp, Direction{dim}, lev);
+            ::CheckGuardCells(m_fields, FieldType::Bfield_fp, Direction{dim}, lev);
+            ::CheckGuardCells(m_fields, FieldType::current_fp, Direction{dim}, lev);
 
             if (WarpX::fft_do_time_averaging)
             {
-                ::CheckGuardCells(m_fields, "Efield_avg_fp[" + std::to_string(dim) + "]", lev);
-                ::CheckGuardCells(m_fields, "Bfield_avg_fp[" + std::to_string(dim) + "]", lev);
+                ::CheckGuardCells(m_fields, FieldType::Efield_avg_fp, Direction{dim}, lev);
+                ::CheckGuardCells(m_fields, FieldType::Bfield_avg_fp, Direction{dim}, lev);
             }
         }
 
-        ::CheckGuardCells(m_fields, "rho_fp", lev);
-        ::CheckGuardCells(m_fields, "F_fp", lev);
-        ::CheckGuardCells(m_fields, "G_fp", lev);
+        ::CheckGuardCells(m_fields, FieldType::rho_fp, lev);
+        ::CheckGuardCells(m_fields, FieldType::F_fp, lev);
+        ::CheckGuardCells(m_fields, FieldType::G_fp, lev);
 
         // MultiFabs on coarse patch
         if (lev > 0)
         {
             for (int dim = 0; dim < 3; ++dim)
             {
-                ::CheckGuardCells(m_fields, "Efield_cp[" + std::to_string(dim) + "]", lev);
-                ::CheckGuardCells(m_fields, "Bfield_cp[" + std::to_string(dim) + "]", lev);
-                ::CheckGuardCells(m_fields, "current_cp[" + std::to_string(dim) + "]", lev);
+                ::CheckGuardCells(m_fields, FieldType::Efield_cp, Direction{dim}, lev);
+                ::CheckGuardCells(m_fields, FieldType::Bfield_cp, Direction{dim}, lev);
+                ::CheckGuardCells(m_fields, FieldType::current_cp, Direction{dim}, lev);
 
                 if (WarpX::fft_do_time_averaging)
                 {
-                    ::CheckGuardCells(m_fields, "Efield_avg_cp[" + std::to_string(dim) + "]", lev);
-                    ::CheckGuardCells(m_fields, "Bfield_avg_cp[" + std::to_string(dim) + "]", lev);
+                    ::CheckGuardCells(m_fields, FieldType::Efield_avg_cp, Direction{dim}, lev);
+                    ::CheckGuardCells(m_fields, FieldType::Bfield_avg_cp, Direction{dim}, lev);
                 }
             }
 
-            ::CheckGuardCells(m_fields, "rho_cp", lev);
-            ::CheckGuardCells(m_fields, "F_cp", lev);
-            ::CheckGuardCells(m_fields, "G_cp", lev);
+            ::CheckGuardCells(m_fields, FieldType::rho_cp, lev);
+            ::CheckGuardCells(m_fields, FieldType::F_cp, lev);
+            ::CheckGuardCells(m_fields, FieldType::G_cp, lev);
         }
     }
 }
