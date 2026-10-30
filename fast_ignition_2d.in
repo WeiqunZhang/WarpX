@@ -1,0 +1,123 @@
+#################################
+########## CONSTANTS ############
+#################################
+
+my_constants.nD0 = 3.59e31       # m^-3
+my_constants.nT0 = 3.59e31       # m^-3
+my_constants.ne0 = nD0 + nT0     # m^-3
+my_constants.T0 = 5.0e3          # eV
+#my_constants.wpe0 = q_e*sqrt(ne0/(m_e*epsilon0))
+my_constants.Nppc_x = 30       # number of target particles/cell in z
+my_constants.Nppc_z = 30       # number of target particles/cell in z
+my_constants.Vte0 = sqrt(T0*q_e/m_e)
+
+my_constants.A_D  = 2.0141017781       # deuterium atomic number
+my_constants.m_D  = A_D*m_u - m_e      # deuterium mass [kg]
+my_constants.VtD0 = sqrt(T0*q_e/m_D)   # deuterium thermal speed [m/s]
+
+my_constants.A_T  = 3.01604928         # tritium atomic number
+my_constants.m_T  = A_T*m_u - m_e      # tritium mass [kg]
+my_constants.VtT0 = sqrt(T0*q_e/m_T)   # tritium thermal speed [m/s]
+
+my_constants.write_interval_mesh = 5000
+
+#################################
+####### GENERAL PARAMETERS ######
+#################################
+stop_time = 24000.0e-12 #24.0e-12
+max_step = 201000
+amr.n_cell =  32 32
+#amr.max_grid_size = 8
+#amr.blocking_factor = 8
+amr.max_level = 0
+warpx.numprocs = 2 4
+geometry.dims = 2
+geometry.prob_lo = 0.0 0.0
+geometry.prob_hi = 12.5e-6 12.5e-6
+
+#amr.restart = "./diags/checkpoint050000/"
+
+amrex.fpe_trap_invalid = 1
+amrex.fpe_trap_overflow = 1
+amrex.fpe_trap_zero = 1
+#amrex.the_arena_init_size = 8589934592 # 8*1024^3 = 8 GB
+#amrex.the_arena_init_size = 103079215104 # 0.75*128*1024^3 = 96 GB
+
+#################################
+####### Boundary condition ######
+#################################
+boundary.field_lo = periodic periodic
+boundary.field_hi = periodic periodic
+boundary.particle_lo = periodic periodic
+boundary.particle_hi = periodic periodic
+
+#################################
+############ NUMERICS ###########
+#################################
+warpx.serialize_initial_conditions = 1
+warpx.verbose = 1
+warpx.limit_verbose_step = true
+warpx.const_dt = 1.0e-18
+#warpx.cfl = 0.99
+#warpx.max_dt = 1.0e-16
+#warpx.dt_update_interval = 100
+#warpx.dt_update_write_interval = 100
+#warpx.dt_update_diagnostic_file = "diags/reduced_files/dt_updates.txt"
+#warpx.max_omegap_dt = 200.0
+#warpx.max_omegac_dt = 4.0
+warpx.use_filter = 0
+
+algo.load_balance_intervals = 0
+warpx.sort_particles_for_deposition = 1
+warpx.sort_intervals = 10
+
+algo.maxwell_solver = Yee
+
+algo.particle_pusher = "boris"
+#algo.particle_pusher = "higuera"
+
+algo.particle_shape = 2
+algo.current_deposition = "villasenor"
+
+#################################
+############ PLASMA #############
+#################################
+particles.species_names = electrons deuterium tritium
+
+electrons.species_type = electron
+deuterium.species_type = deuterium
+tritium.species_type = tritium
+
+electrons.injection_sources = groupA groupB
+
+# Set initial profiles for target electrons
+electrons.groupA.injection_style = "NUniformPerCell"
+electrons.groupB.injection_style = "NUniformPerCell"
+electrons.num_particles_per_cell_each_dim = Nppc_x Nppc_z
+electrons.profile = constant
+electrons.density = nD0
+electrons.momentum_distribution_type = "gaussian"
+electrons.ux_th = Vte0/clight
+electrons.uy_th = Vte0/clight
+electrons.uz_th = Vte0/clight
+
+# Set initial profiles for target deuterium
+deuterium.injection_style = "NUniformPerCell"
+deuterium.num_particles_per_cell_each_dim = Nppc_x Nppc_z
+deuterium.profile = constant
+deuterium.density = nD0
+deuterium.momentum_distribution_type = "gaussian"
+deuterium.ux_th = VtD0/clight
+deuterium.uy_th = VtD0/clight
+deuterium.uz_th = VtD0/clight
+
+# Set initial profiles for target tritium
+tritium.injection_style = "NUniformPerCell"
+tritium.num_particles_per_cell_each_dim = Nppc_x Nppc_z
+tritium.profile = constant
+tritium.density = nT0
+tritium.momentum_distribution_type = "gaussian"
+tritium.ux_th = VtT0/clight
+tritium.uy_th = VtT0/clight
+tritium.uz_th = VtT0/clight
+
