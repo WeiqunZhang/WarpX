@@ -40,6 +40,9 @@
 #include <ablastr/warn_manager/WarnManager.H>
 
 #include <AMReX.H>
+#ifdef AMREX_MEM_PROFILING
+#include <AMReX_MemProfiler.H>
+#endif
 #include <AMReX_Array.H>
 #include <AMReX_BLassert.H>
 #include <AMReX_Geometry.H>
@@ -380,6 +383,12 @@ WarpX::Evolve (int numsteps)
         evolve_time += evolve_time_end_step - evolve_time_beg_step;
 
         HandleSignals();
+
+#ifdef AMREX_MEM_PROFILING
+        if (m_mem_report_interval > 0 && (step+1) % m_mem_report_interval == 0) {
+            amrex::MemProfiler::report("STEP " + std::to_string(step+1));
+        }
+#endif
 
         if (verbose_step) {
             amrex::Print()<< "STEP " << step+1 << " ends." << " TIME = " << cur_time

@@ -1499,6 +1499,8 @@ private:
     // Other runtime parameters
     int verbose = 1;
     bool m_limit_verbose_step = false;
+    //! Interval (in steps) for amrex::MemProfiler reports; <= 0 disables them
+    int m_mem_report_interval = 100;
 
     bool use_hybrid_QED = false;
 
